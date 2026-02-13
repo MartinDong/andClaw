@@ -1,0 +1,206 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Notification -->
+    <string name="notification_channel_name">OpenClaw Gateway</string>
+    <string name="notification_channel_description">Estado de ejecución del gateway OpenClaw</string>
+    <string name="notification_waiting">Esperando</string>
+    <string name="notification_running">En ejecución | %1$s</string>
+    <string name="notification_starting">Iniciando…</string>
+    <string name="notification_stopping">Deteniendo…</string>
+    <string name="notification_error">Error: %1$s</string>
+    <string name="notification_stopped">Detenido</string>
+    <string name="notification_unknown">Desconocido</string>
+    <string name="notification_action_stop">Detener</string>
+
+    <!-- Setup Screen -->
+    <string name="setup_subtitle">Ejecutar OpenClaw en Android</string>
+    <string name="setup_storage">Almacenamiento</string>
+    <string name="setup_storage_mb">%1$d MB</string>
+    <string name="setup_proot_ready">Listo</string>
+    <string name="setup_proot_unavailable">No disponible</string>
+    <string name="setup_description">Todo lo necesario está incluido. Solo toca el botón de abajo.</string>
+    <string name="setup_steps_detail">1. Preparar entorno\n2. Instalar componentes\n3. Configurar motor de IA\n4. Configuración final</string>
+    <string name="setup_estimate">1–2 minutos</string>
+    <string name="setup_btn_start">Iniciar configuración</string>
+    <string name="setup_btn_next_step">Continuar</string>
+    <string name="setup_btn_retry">Reintentar</string>
+    <string name="setup_error_default">Ocurrió un error durante la configuración</string>
+    <string name="setup_err_storage">Almacenamiento insuficiente (se requieren mínimo 1.5 GB)</string>
+    <string name="setup_err_proot">Binario proot no incluido en el APK.\nEjecuta scripts/setup-assets.sh y reconstruye.</string>
+
+    <!-- Setup Steps -->
+    <string name="step_idle">Inactivo</string>
+    <string name="step_checking_proot">Preparando…</string>
+    <string name="step_extracting_rootfs">Configurando entorno…</string>
+    <string name="step_configuring_rootfs">Configurando…</string>
+    <string name="step_extracting_nodejs">Instalando componentes…</string>
+    <string name="step_installing_tools">Instalando herramientas…</string>
+    <string name="step_installing_openclaw">Instalando motor de IA…</string>
+    <string name="step_installing_chromium">Instalando navegador…</string>
+    <string name="step_applying_patches">Optimizando…</string>
+    <string name="step_verifying">Casi listo…</string>
+    <string name="step_onboarding">Inicializando motor…</string>
+    <string name="step_complete">¡Configuración completada!</string>
+    <string name="step_failed">Error en la configuración</string>
+
+    <!-- Welcome / OAuth -->
+    <string name="welcome_subtitle">Pasarela de agentes IA en tu teléfono</string>
+    <string name="welcome_openrouter_desc">OpenRouter es una pasarela de IA unificada que te da acceso a modelos de OpenAI, Google, Anthropic y más, todo con una sola cuenta.</string>
+    <string name="welcome_connect_button">Conectar con OpenRouter en 3 seg</string>
+    <string name="welcome_free_models">Regístrate con Google · Omite el pago para usar modelos gratuitos</string>
+    <string name="welcome_connecting">Conectando…</string>
+    <string name="welcome_error">Error de conexión: %1$s</string>
+
+    <!-- Onboarding -->
+    <string name="onboarding_btn_previous">Anterior</string>
+    <string name="onboarding_btn_next">Siguiente</string>
+    <string name="onboarding_btn_done">Listo</string>
+    <string name="onboarding_btn_skip">Configurar luego</string>
+    <string name="onboarding_provider_title">Seleccionar proveedor de IA</string>
+    <string name="onboarding_provider_subtitle">Elige el proveedor del modelo de IA para OpenClaw</string>
+    <string name="onboarding_provider_anthropic">Usar modelos Claude</string>
+    <string name="onboarding_provider_openai">Usar modelos GPT</string>
+    <string name="onboarding_provider_google">Usar modelos Gemini</string>
+    <string name="onboarding_provider_openrouter">OpenRouter (Gateway unificado multi-modelo)</string>
+    <string name="welcome_manual_input">Ingresar clave de API manualmente</string>
+    <string name="welcome_manual_collapse">Cerrar</string>
+    <string name="onboarding_apikey_title">Ingresa tu clave de API</string>
+    <string name="onboarding_get_key">Obtener clave API de OpenRouter</string>
+    <string name="onboarding_apikey_subtitle">Ingresa tu clave de API de %1$s</string>
+    <string name="onboarding_apikey_invalid">Por favor ingresa una clave de API válida</string>
+    <string name="onboarding_apikey_security">Tu clave de API se almacena de forma segura solo en este dispositivo.\nNunca se envía a servidores externos.</string>
+    <string name="onboarding_channel_title">Integración de canales</string>
+    <string name="onboarding_channel_subtitle">Puedes conectar canales después de iniciar el gateway</string>
+    <string name="onboarding_whatsapp_desc">Emparejar escaneando código QR</string>
+    <string name="onboarding_bot_token_desc">Conectar con token del bot</string>
+    <string name="onboarding_signal_desc">Conectar con número de teléfono</string>
+    <string name="onboarding_channel_note">La integración de canales también se puede configurar en Configuración después de iniciar el gateway</string>
+
+    <!-- Dashboard -->
+    <string name="dashboard_cd_settings">Configuración</string>
+    <string name="dashboard_status_running">En ejecución</string>
+    <string name="dashboard_status_starting">Iniciando…</string>
+    <string name="dashboard_status_stopping">Deteniendo…</string>
+    <string name="dashboard_status_error">Error</string>
+    <string name="dashboard_status_stopped">Detenido</string>
+    <string name="dashboard_btn_start">Iniciar</string>
+    <string name="dashboard_apikey_required_title">Se requiere clave de API</string>
+    <string name="dashboard_apikey_required_message">Configura tu clave de API en Ajustes antes de iniciar el gateway.</string>
+    <string name="dashboard_apikey_go_settings">Ir a Ajustes</string>
+    <string name="dashboard_apikey_dismiss">Después</string>
+    <string name="dashboard_btn_stop">Detener</string>
+    <string name="dashboard_btn_restart">Reiniciar</string>
+    <string name="dashboard_channels_value">%1$d</string>
+    <string name="dashboard_label_memory">Memoria</string>
+    <string name="dashboard_memory_value">%1$d MB</string>
+    <string name="dashboard_label_battery">Batería</string>
+    <string name="dashboard_model_label">Modelo de IA</string>
+    <string name="dashboard_log_title">Registros</string>
+    <string name="dashboard_log_empty">Los registros aparecerán aquí una vez que el gateway se inicie</string>
+
+    <!-- Settings -->
+    <string name="settings_title">Configuración</string>
+    <string name="settings_cd_back">Atrás</string>
+    <string name="settings_section_gateway">Gateway</string>
+    <string name="settings_auto_start">Inicio automático al encender</string>
+    <string name="settings_auto_start_desc">Inicia automáticamente el gateway cuando el dispositivo se reinicia</string>
+    <string name="settings_charge_only">Ejecutar solo mientras se carga</string>
+    <string name="settings_charge_only_desc">Mantén el gateway activo solo mientras se está cargando</string>
+    <string name="settings_section_battery">Batería</string>
+    <string name="settings_battery_optimization">Exención de optimización de batería</string>
+    <string name="settings_battery_exempted">Ya exentado — operación estable en segundo plano</string>
+    <string name="settings_battery_not_exempted">Toca para configurar — mejora la estabilidad en segundo plano</string>
+    <string name="settings_cannot_open">No se puede abrir la configuración</string>
+    <string name="settings_section_ai">Modelo de IA</string>
+    <string name="settings_current_provider">Proveedor actual</string>
+    <string name="settings_change_provider">Cambiar proveedor</string>
+    <string name="settings_api_key">Clave de API</string>
+    <string name="settings_api_key_configured">Configurada</string>
+    <string name="settings_api_key_not_configured">No configurada</string>
+    <string name="settings_api_key_hint">Ingresa tu clave de API</string>
+    <string name="settings_api_key_save">Guardar</string>
+    <string name="settings_api_key_cancel">Cancelar</string>
+    
+    <string name="settings_restart_confirm_message">¿Reiniciar la puerta de enlace ahora?</string>
+    <string name="settings_restart_confirm_yes">Sí</string>
+    <string name="settings_restart_confirm_no">No</string>
+<string name="settings_select_model">Seleccionar modelo</string>
+    <string name="settings_model_default">Predeterminado (Auto Select Free)</string>
+    <string name="settings_model_restart_hint">Reinicia el gateway para aplicar el nuevo modelo</string>
+    <string name="settings_model_loading">Cargando modelos…</string>
+    <string name="settings_model_load_error">Error al cargar modelos: %1$s</string>
+    <string name="settings_model_retry">Reintentar</string>
+    <string name="settings_model_none_found">No se encontraron modelos compatibles</string>
+    <string name="settings_model_close">Cerrar</string>
+    <string name="settings_model_section_free">Gratuitos</string>
+    <string name="settings_model_free_warning">Los modelos gratuitos pueden ser lentos o no responder durante alta demanda</string>
+    <string name="settings_model_section_paid">De pago</string>
+    <string name="settings_section_about">Acerca de</string>
+    <string name="settings_disclaimer">Esta aplicación no es una aplicación oficial de OpenClaw</string>
+
+    <!-- Tools -->
+    <string name="settings_section_tools">Herramientas</string>
+    <string name="settings_brave_search_key">Clave API de Brave Search</string>
+    <string name="settings_brave_search_desc">Habilita la búsqueda web para el agente de IA. Opcional — dejar vacío para desactivar.</string>
+    <string name="settings_brave_search_optional">No configurado (opcional)</string>
+    <string name="settings_brave_search_get_key">Obtener clave API de Brave Search →</string>
+
+    <!-- Channels -->
+    <string name="settings_section_channels">Canales</string>
+    <string name="settings_whatsapp_desc">Conectar escaneando código QR</string>
+    <string name="settings_telegram_desc">Conectar con token de bot</string>
+    <string name="settings_discord_desc">Conectar con token de bot</string>
+    <string name="settings_token_configured">Configurado</string>
+    <string name="settings_token_not_configured">No configurado</string>
+    <string name="settings_bot_token_title">Token de bot</string>
+    <string name="settings_bot_token_hint">Ingresa el token del bot</string>
+    <string name="settings_bot_token_help">Crear bot de %1$s →</string>
+    <string name="settings_channels_restart_hint">Reinicia el gateway para aplicar los cambios de canal</string>
+    <string name="dashboard_no_channels">Sin canales configurados</string>
+    <string name="dashboard_whatsapp_qr_title">Código QR de WhatsApp</string>
+    <string name="dashboard_whatsapp_qr_instruction">Abre WhatsApp → Dispositivos vinculados → Vincular dispositivo → Escanea este código QR</string>
+    <string name="dashboard_whatsapp_qr_error">Error al generar el código QR</string>
+
+    <!-- Pairing -->
+    <string name="pairing_requests_title">Solicitudes de emparejamiento</string>
+    <string name="pairing_approve">Aprobar</string>
+    <string name="pairing_deny">Rechazar</string>
+    <string name="pairing_code_label">Código: %1$s</string>
+
+    <!-- WhatsApp Connect -->
+    <string name="whatsapp_connect_title">WhatsApp</string>
+    <string name="whatsapp_connect_desc">Escanea el código QR para conectar</string>
+    <string name="whatsapp_connect_btn">Conectar</string>
+    <string name="whatsapp_qr_loading">Generando código QR…</string>
+    <string name="whatsapp_connected">¡Conectado!</string>
+    <string name="whatsapp_connect_error">Error de conexión: %1$s</string>
+    <string name="whatsapp_qr_share">Compartir</string>
+
+    <!-- Pairing Notification -->
+    <string name="pairing_notification_channel">Solicitudes de emparejamiento</string>
+    <string name="pairing_notification_title">Nueva solicitud de emparejamiento</string>
+    <string name="pairing_notification_text">%1$s: %2$s</string>
+    <string name="settings_codex_oauth_title">OpenAI Codex OAuth</string>
+    <string name="settings_codex_oauth_signing_in">Signing in…</string>
+    <string name="settings_channel_whatsapp">WhatsApp</string>
+    <string name="settings_channel_telegram">Telegram</string>
+    <string name="settings_channel_discord">Discord</string>
+    <string name="settings_about_version">andClaw v%1$s</string>
+    <string name="settings_about_powered_by">Powered by OpenClaw</string>
+    <string name="settings_provider_openai_api">%1$s (API)</string>
+    <string name="settings_provider_openai_codex">%1$s (Codex OAuth)</string>
+    <string name="settings_bot_token_dialog_title">%1$s Bot Token</string>
+    <string name="settings_bot_restart_notice_message">The gateway will restart.</string>
+</resources>
+
+
+
+
+
+
+
+
+
+
+
+

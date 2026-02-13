@@ -1,0 +1,194 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">andClaw</string>
+    <string name="notification_channel_name">Gateway OpenClaw</string>
+    <string name="notification_channel_description">Status gateway OpenClaw berjalan</string>
+    <string name="notification_waiting">Menunggu</string>
+    <string name="notification_running">Berjalan | %1$s</string>
+    <string name="notification_starting">Memulai…</string>
+    <string name="notification_stopping">Menghentikan…</string>
+    <string name="notification_error">Kesalahan: %1$s</string>
+    <string name="notification_stopped">Dihentikan</string>
+    <string name="notification_unknown">Tidak diketahui</string>
+    <string name="notification_action_stop">Hentikan</string>
+    <string name="setup_subtitle">Jalankan OpenClaw di Android</string>
+    <string name="setup_storage">Penyimpanan</string>
+    <string name="setup_storage_mb">%1$d MB</string>
+    <string name="setup_proot_ready">Siap</string>
+    <string name="setup_proot_unavailable">Tidak tersedia</string>
+    <string name="setup_description">Semuanya sudah disertakan. Cukup ketuk tombol di bawah.</string>
+    <string name="setup_steps_detail">1. Siapkan lingkungan\n2. Instal komponen\n3. Atur mesin AI\n4. Konfigurasi akhir</string>
+    <string name="setup_estimate">Membutuhkan 1–2 menit</string>
+    <string name="setup_btn_start">Mulai Pengaturan</string>
+    <string name="setup_btn_next_step">Lanjutkan</string>
+    <string name="setup_btn_retry">Coba Lagi</string>
+    <string name="setup_error_default">Terjadi kesalahan selama pengaturan</string>
+    <string name="setup_err_storage">Penyimpanan tidak cukup (minimal 1,5 GB diperlukan)</string>
+    <string name="setup_err_proot">Biner proot tidak disertakan dalam APK.\nJalankan scripts/setup-assets.sh dan bangun ulang.</string>
+    <string name="step_idle">Menganggur</string>
+    <string name="step_checking_proot">Menyiapkan…</string>
+    <string name="step_extracting_rootfs">Menyiapkan lingkungan…</string>
+    <string name="step_configuring_rootfs">Mengonfigurasi…</string>
+    <string name="step_extracting_nodejs">Memasang komponen…</string>
+    <string name="step_installing_tools">Memasang alat…</string>
+    <string name="step_installing_openclaw">Memasang mesin AI…</string>
+    <string name="step_installing_chromium">Memasang browser…</string>
+    <string name="step_applying_patches">Mengoptimalkan…</string>
+    <string name="step_verifying">Hampir selesai…</string>
+    <string name="step_onboarding">Menginisialisasi engine…</string>
+    <string name="step_complete">Pengaturan selesai!</string>
+    <string name="step_failed">Pengaturan gagal</string>
+    <string name="welcome_subtitle">Gateway agen AI di ponsel Anda</string>
+    <string name="welcome_openrouter_desc">OpenRouter adalah gateway AI terpadu yang memberi Anda akses ke model dari OpenAI, Google, Anthropic, dan lainnya dengan satu akun.</string>
+    <string name="welcome_connect_button">Hubungkan dengan OpenRouter dalam 3 detik</string>
+    <string name="welcome_free_models">Daftar dengan Google · Lewati pembayaran untuk menggunakan model gratis</string>
+    <string name="welcome_connecting">Menghubungkan…</string>
+    <string name="welcome_error">Koneksi gagal: %1$s</string>
+    <string name="onboarding_btn_previous">Sebelumnya</string>
+    <string name="onboarding_btn_next">Berikutnya</string>
+    <string name="onboarding_btn_done">Selesai</string>
+    <string name="onboarding_btn_skip">Lewati untuk saat ini</string>
+    <string name="onboarding_provider_title">Pilih Penyedia AI</string>
+    <string name="onboarding_provider_subtitle">Pilih penyedia model AI untuk OpenClaw</string>
+    <string name="onboarding_provider_anthropic">Gunakan model Claude</string>
+    <string name="onboarding_provider_openai">Gunakan model GPT</string>
+    <string name="onboarding_provider_google">Gunakan model Gemini</string>
+    <string name="onboarding_provider_openrouter">OpenRouter (Gateway gateway multi-model terpadu)</string>
+    <string name="welcome_manual_input">Masukkan kunci API secara manual</string>
+    <string name="welcome_manual_collapse">Tutup</string>
+    <string name="onboarding_apikey_title">Masukkan Kunci API</string>
+    <string name="onboarding_get_key">Dapatkan Kunci API OpenRouter</string>
+    <string name="onboarding_apikey_subtitle">Masukkan kunci API %1$s Anda</string>
+    <string name="onboarding_apikey_invalid">Masukkan kunci API yang valid</string>
+    <string name="onboarding_apikey_security">Kunci API Anda disimpan dengan aman di perangkat ini saja.\nTidak pernah dikirim ke server eksternal.</string>
+    <string name="onboarding_channel_title">Integrasi Saluran</string>
+    <string name="onboarding_channel_subtitle">Anda dapat menghubungkan saluran setelah memulai gateway</string>
+    <string name="onboarding_whatsapp_desc">Pasangkan dengan memindai kode QR</string>
+    <string name="onboarding_bot_token_desc">Hubungkan dengan Token Bot</string>
+    <string name="onboarding_signal_desc">Hubungkan dengan nomor ponsel</string>
+    <string name="onboarding_channel_note">Integrasi saluran juga dapat dikonfigurasi di Pengaturan setelah memulai gateway</string>
+    <string name="dashboard_cd_settings">Pengaturan</string>
+    <string name="dashboard_status_running">Berjalan</string>
+    <string name="dashboard_status_starting">Memulai…</string>
+    <string name="dashboard_status_stopping">Menghentikan…</string>
+    <string name="dashboard_status_error">Kesalahan</string>
+    <string name="dashboard_status_stopped">Dihentikan</string>
+    <string name="dashboard_btn_start">Mulai</string>
+    <string name="dashboard_apikey_required_title">Kunci API diperlukan</string>
+    <string name="dashboard_apikey_required_message">Harap atur kunci API Anda di Pengaturan sebelum memulai gateway.</string>
+    <string name="dashboard_apikey_go_settings">Buka Pengaturan</string>
+    <string name="dashboard_apikey_dismiss">Nanti</string>
+    <string name="dashboard_btn_stop">Hentikan</string>
+    <string name="dashboard_btn_restart">Mulai Ulang</string>
+    <string name="dashboard_channels_value">%1$d</string>
+    <string name="dashboard_label_memory">Memori</string>
+    <string name="dashboard_memory_value">%1$d MB</string>
+    <string name="dashboard_label_battery">Baterai</string>
+    <string name="dashboard_model_label">Model AI</string>
+    <string name="dashboard_log_title">Log</string>
+    <string name="dashboard_log_empty">Log akan muncul di sini setelah gateway dimulai</string>
+    <string name="settings_title">Pengaturan</string>
+    <string name="settings_cd_back">Kembali</string>
+    <string name="settings_section_gateway">Gateway</string>
+    <string name="settings_auto_start">Auto-start saat boot</string>
+    <string name="settings_auto_start_desc">Secara otomatis memulai gateway saat perangkat restart</string>
+    <string name="settings_charge_only">Jalankan hanya saat mengisi daya</string>
+    <string name="settings_charge_only_desc">Jaga gateway tetap aktif hanya saat mengisi daya</string>
+    <string name="settings_section_battery">Baterai</string>
+    <string name="settings_battery_optimization">Pengecualian optimasi baterai</string>
+    <string name="settings_battery_exempted">Sudah dikecualikan — operasi latar belakang stabil</string>
+    <string name="settings_battery_not_exempted">Ketuk untuk konfigurasi — meningkatkan stabilitas latar belakang</string>
+    <string name="settings_cannot_open">Tidak dapat membuka pengaturan</string>
+    <string name="settings_section_ai">Model AI</string>
+    <string name="settings_current_provider">Penyedia saat ini</string>
+    <string name="settings_change_provider">Ubah penyedia</string>
+    <string name="settings_api_key">Kunci API</string>
+    <string name="settings_api_key_configured">Dikonfigurasi</string>
+    <string name="settings_api_key_not_configured">Tidak dikonfigurasi</string>
+    <string name="settings_api_key_hint">Masukkan kunci API Anda</string>
+    <string name="settings_api_key_save">Simpan</string>
+    <string name="settings_api_key_cancel">Batal</string>
+    
+    <string name="settings_restart_confirm_message">Mulai ulang gateway sekarang?</string>
+    <string name="settings_restart_confirm_yes">Ya</string>
+    <string name="settings_restart_confirm_no">Tidak</string>
+<string name="settings_select_model">Pilih model</string>
+    <string name="settings_model_default">Default (Auto Select Free)</string>
+    <string name="settings_model_restart_hint">Mulai ulang gateway untuk menerapkan model baru</string>
+    <string name="settings_model_loading">Memuat model…</string>
+    <string name="settings_model_load_error">Gagal memuat model: %1$s</string>
+    <string name="settings_model_retry">Coba Lagi</string>
+    <string name="settings_model_none_found">Tidak ada model dengan dukungan alat yang ditemukan</string>
+    <string name="settings_model_close">Tutup</string>
+    <string name="settings_model_section_free">Gratis</string>
+    <string name="settings_model_free_warning">Model gratis mungkin lambat atau tidak responsif saat permintaan tinggi</string>
+    <string name="settings_model_section_paid">Berbayar</string>
+    <string name="settings_section_about">Tentang</string>
+    <string name="settings_disclaimer">Aplikasi ini bukan aplikasi OpenClaw resmi</string>
+
+    <!-- Tools -->
+    <string name="settings_section_tools">Alat</string>
+    <string name="settings_brave_search_key">Kunci API Brave Search</string>
+    <string name="settings_brave_search_desc">Mengaktifkan pencarian web untuk agen AI. Opsional — kosongkan untuk menonaktifkan.</string>
+    <string name="settings_brave_search_optional">Belum dikonfigurasi (opsional)</string>
+    <string name="settings_brave_search_get_key">Dapatkan kunci API Brave Search →</string>
+
+    <!-- Channels -->
+    <string name="settings_section_channels">Saluran</string>
+    <string name="settings_whatsapp_desc">Hubungkan dengan memindai kode QR</string>
+    <string name="settings_telegram_desc">Hubungkan dengan token bot</string>
+    <string name="settings_discord_desc">Hubungkan dengan token bot</string>
+    <string name="settings_token_configured">Dikonfigurasi</string>
+    <string name="settings_token_not_configured">Belum dikonfigurasi</string>
+    <string name="settings_bot_token_title">Token Bot</string>
+    <string name="settings_bot_token_hint">Masukkan token bot</string>
+    <string name="settings_bot_token_help">Buat bot %1$s →</string>
+    <string name="settings_channels_restart_hint">Mulai ulang gateway untuk menerapkan perubahan saluran</string>
+    <string name="dashboard_no_channels">Tidak ada saluran yang dikonfigurasi</string>
+    <string name="dashboard_whatsapp_qr_title">Kode QR WhatsApp</string>
+    <string name="dashboard_whatsapp_qr_instruction">Buka WhatsApp → Perangkat tertaut → Tautkan perangkat → Pindai kode QR ini</string>
+    <string name="dashboard_whatsapp_qr_error">Gagal membuat kode QR</string>
+
+    <!-- Pairing -->
+    <string name="pairing_requests_title">Permintaan Pemasangan</string>
+    <string name="pairing_approve">Setujui</string>
+    <string name="pairing_deny">Tolak</string>
+    <string name="pairing_code_label">Kode: %1$s</string>
+
+    <!-- WhatsApp Connect -->
+    <string name="whatsapp_connect_title">WhatsApp</string>
+    <string name="whatsapp_connect_desc">Pindai kode QR untuk menghubungkan</string>
+    <string name="whatsapp_connect_btn">Hubungkan</string>
+    <string name="whatsapp_qr_loading">Membuat kode QR…</string>
+    <string name="whatsapp_connected">Terhubung!</string>
+    <string name="whatsapp_connect_error">Koneksi gagal: %1$s</string>
+    <string name="whatsapp_qr_share">Bagikan</string>
+
+    <!-- Pairing Notification -->
+    <string name="pairing_notification_channel">Permintaan Pemasangan</string>
+    <string name="pairing_notification_title">Permintaan Pemasangan Baru</string>
+    <string name="pairing_notification_text">%1$s: %2$s</string>
+    <string name="settings_codex_oauth_title">OpenAI Codex OAuth</string>
+    <string name="settings_codex_oauth_signing_in">Signing in…</string>
+    <string name="settings_channel_whatsapp">WhatsApp</string>
+    <string name="settings_channel_telegram">Telegram</string>
+    <string name="settings_channel_discord">Discord</string>
+    <string name="settings_about_version">andClaw v%1$s</string>
+    <string name="settings_about_powered_by">Powered by OpenClaw</string>
+    <string name="settings_provider_openai_api">%1$s (API)</string>
+    <string name="settings_provider_openai_codex">%1$s (Codex OAuth)</string>
+    <string name="settings_bot_token_dialog_title">%1$s Bot Token</string>
+    <string name="settings_bot_restart_notice_message">The gateway will restart.</string>
+</resources>
+
+
+
+
+
+
+
+
+
+
+
+

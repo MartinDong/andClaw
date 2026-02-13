@@ -1,0 +1,194 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">andClaw</string>
+    <string name="notification_channel_name">OpenClaw Gateway</string>
+    <string name="notification_channel_description">สถานะการทำงานของ OpenClaw gateway</string>
+    <string name="notification_waiting">รอโปรแกรม</string>
+    <string name="notification_running">ทำงาน | %1$s</string>
+    <string name="notification_starting">กำลังเริ่ม…</string>
+    <string name="notification_stopping">กำลังหยุด…</string>
+    <string name="notification_error">ข้อผิดพลาด: %1$s</string>
+    <string name="notification_stopped">หยุด</string>
+    <string name="notification_unknown">ไม่ทราบ</string>
+    <string name="notification_action_stop">หยุด</string>
+    <string name="setup_subtitle">เรียกใช้ OpenClaw บน Android</string>
+    <string name="setup_storage">ที่เก็บข้อมูล</string>
+    <string name="setup_storage_mb">%1$d MB</string>
+    <string name="setup_proot_ready">พร้อม</string>
+    <string name="setup_proot_unavailable">ไม่พร้อมใช้</string>
+    <string name="setup_description">ทั้งหมดรวมอยู่ในแอปแล้ว แค่แตะปุ่มด้านล่างเท่านั้น</string>
+    <string name="setup_steps_detail">1. เตรียมสภาพแวดล้อม\n2. ติดตั้งส่วนประกอบ\n3. ตั้งค่าเครื่องมือ AI\n4. การตั้งค่าขั้นสุดท้าย</string>
+    <string name="setup_estimate">ใช้เวลา 1–2 นาที</string>
+    <string name="setup_btn_start">เริ่มการตั้งค่า</string>
+    <string name="setup_btn_next_step">ต่อไป</string>
+    <string name="setup_btn_retry">ลองใหม่</string>
+    <string name="setup_error_default">เกิดข้อผิดพลาดระหว่างการตั้งค่า</string>
+    <string name="setup_err_storage">ที่เก็บข้อมูลไม่เพียงพอ (ต้องการขั้นต่ำ 1.5 GB)</string>
+    <string name="setup_err_proot">ไบนารี proot ไม่รวมอยู่ใน APK\nเรียกใช้ scripts/setup-assets.sh และสร้างใหม่</string>
+    <string name="step_idle">ว่าง</string>
+    <string name="step_checking_proot">กำลังเตรียม…</string>
+    <string name="step_extracting_rootfs">กำลังตั้งค่าสภาพแวดล้อม…</string>
+    <string name="step_configuring_rootfs">กำลังตั้งค่า…</string>
+    <string name="step_extracting_nodejs">กำลังติดตั้งส่วนประกอบ…</string>
+    <string name="step_installing_tools">กำลังติดตั้งเครื่องมือ…</string>
+    <string name="step_installing_openclaw">กำลังติดตั้งเครื่องมือ AI…</string>
+    <string name="step_installing_chromium">กำลังติดตั้งเบราว์เซอร์…</string>
+    <string name="step_applying_patches">กำลังปรับให้เหมาะสม…</string>
+    <string name="step_verifying">เกือบเสร็จแล้ว…</string>
+    <string name="step_onboarding">กำลังเริ่มต้นเอนจิน…</string>
+    <string name="step_complete">การตั้งค่าเสร็จสมบูรณ์!</string>
+    <string name="step_failed">การตั้งค่าล้มเหลว</string>
+    <string name="welcome_subtitle">AI agent gateway บนโทรศัพท์ของคุณ</string>
+    <string name="welcome_openrouter_desc">OpenRouter คือเกตเวย์ AI แบบรวมที่ให้คุณเข้าถึงโมเดลจาก OpenAI, Google, Anthropic และอื่น ๆ ด้วยบัญชีเดียว</string>
+    <string name="welcome_connect_button">เชื่อมต่อกับ OpenRouter ใน 3 วินาที</string>
+    <string name="welcome_free_models">ลงทะเบียนด้วย Google · ข้ามการชำระเงินเพื่อใช้โมเดลฟรี</string>
+    <string name="welcome_connecting">กำลังเชื่อมต่อ…</string>
+    <string name="welcome_error">การเชื่อมต่อล้มเหลว: %1$s</string>
+    <string name="onboarding_btn_previous">ก่อนหน้า</string>
+    <string name="onboarding_btn_next">ต่อไป</string>
+    <string name="onboarding_btn_done">เสร็จสิ้น</string>
+    <string name="onboarding_btn_skip">ข้ามไปแรกสุด</string>
+    <string name="onboarding_provider_title">เลือกผู้ให้บริการ AI</string>
+    <string name="onboarding_provider_subtitle">เลือกผู้ให้บริการโมเดล AI สำหรับ OpenClaw</string>
+    <string name="onboarding_provider_anthropic">ใช้โมเดล Claude</string>
+    <string name="onboarding_provider_openai">ใช้โมเดล GPT</string>
+    <string name="onboarding_provider_google">ใช้โมเดล Gemini</string>
+    <string name="onboarding_provider_openrouter">OpenRouter (เกตเวย์รวมหลายโมเดล)</string>
+    <string name="welcome_manual_input">ป้อน API key ด้วยตนเอง</string>
+    <string name="welcome_manual_collapse">ย่อ</string>
+    <string name="onboarding_apikey_title">ป้อน API Key</string>
+    <string name="onboarding_get_key">รับ OpenRouter API Key</string>
+    <string name="onboarding_apikey_subtitle">ป้อน %1$s API key ของคุณ</string>
+    <string name="onboarding_apikey_invalid">โปรดป้อน API key ที่ถูกต้อง</string>
+    <string name="onboarding_apikey_security">API key ของคุณถูกเก็บไว้อย่างปลอดภัยบนอุปกรณ์นี้เท่านั้น\nไม่เคยส่งไปยังเซิร์ฟเวอร์ภายนอก</string>
+    <string name="onboarding_channel_title">การรวมช่อง</string>
+    <string name="onboarding_channel_subtitle">คุณสามารถเชื่อมต่อช่องหลังจากเริ่มต้น gateway</string>
+    <string name="onboarding_whatsapp_desc">จับคู่โดยการสแกนโค้ด QR</string>
+    <string name="onboarding_bot_token_desc">เชื่อมต่อด้วย Bot Token</string>
+    <string name="onboarding_signal_desc">เชื่อมต่อด้วยหมายเลขโทรศัพท์</string>
+    <string name="onboarding_channel_note">การรวมช่องสามารถตั้งค่าได้ในการตั้งค่าหลังจากเริ่มต้น gateway</string>
+    <string name="dashboard_cd_settings">การตั้งค่า</string>
+    <string name="dashboard_status_running">ทำงาน</string>
+    <string name="dashboard_status_starting">กำลังเริ่ม…</string>
+    <string name="dashboard_status_stopping">กำลังหยุด…</string>
+    <string name="dashboard_status_error">ข้อผิดพลาด</string>
+    <string name="dashboard_status_stopped">หยุด</string>
+    <string name="dashboard_btn_start">เริ่ม</string>
+    <string name="dashboard_apikey_required_title">ต้องใช้ API key</string>
+    <string name="dashboard_apikey_required_message">โปรดตั้งค่า API key ของคุณในการตั้งค่าก่อนเริ่ม gateway</string>
+    <string name="dashboard_apikey_go_settings">ไปที่การตั้งค่า</string>
+    <string name="dashboard_apikey_dismiss">ทีหลัง</string>
+    <string name="dashboard_btn_stop">หยุด</string>
+    <string name="dashboard_btn_restart">เริ่มใหม่</string>
+    <string name="dashboard_channels_value">%1$d</string>
+    <string name="dashboard_label_memory">หน่วยความจำ</string>
+    <string name="dashboard_memory_value">%1$d MB</string>
+    <string name="dashboard_label_battery">แบตเตอรี่</string>
+    <string name="dashboard_model_label">โมเดล AI</string>
+    <string name="dashboard_log_title">บันทึก</string>
+    <string name="dashboard_log_empty">บันทึกจะปรากฏที่นี่เมื่อ gateway เริ่มทำงาน</string>
+    <string name="settings_title">การตั้งค่า</string>
+    <string name="settings_cd_back">ย้อนกลับ</string>
+    <string name="settings_section_gateway">Gateway</string>
+    <string name="settings_auto_start">เริ่มอัตโนมัติเมื่อเปิดตัว</string>
+    <string name="settings_auto_start_desc">เริ่มต้น gateway อัตโนมัติเมื่ออุปกรณ์รีบูต</string>
+    <string name="settings_charge_only">เรียกใช้ระหว่างชาร์จเท่านั้น</string>
+    <string name="settings_charge_only_desc">ให้ gateway ทำงานอยู่เฉพาะขณะชาร์จเท่านั้น</string>
+    <string name="settings_section_battery">แบตเตอรี่</string>
+    <string name="settings_battery_optimization">ยกเว้นการเพิ่มประสิทธิภาพแบตเตอรี่</string>
+    <string name="settings_battery_exempted">ยกเว้นแล้ว — การทำงานในพื้นหลังที่มั่นคง</string>
+    <string name="settings_battery_not_exempted">แตะเพื่อตั้งค่า — ปรับปรุงความเสถียรในพื้นหลัง</string>
+    <string name="settings_cannot_open">ไม่สามารถเปิดการตั้งค่า</string>
+    <string name="settings_section_ai">โมเดล AI</string>
+    <string name="settings_current_provider">ผู้ให้บริการปัจจุบัน</string>
+    <string name="settings_change_provider">เปลี่ยนผู้ให้บริการ</string>
+    <string name="settings_api_key">API Key</string>
+    <string name="settings_api_key_configured">ตั้งค่าแล้ว</string>
+    <string name="settings_api_key_not_configured">ยังไม่ได้ตั้งค่า</string>
+    <string name="settings_api_key_hint">ป้อน API key ของคุณ</string>
+    <string name="settings_api_key_save">บันทึก</string>
+    <string name="settings_api_key_cancel">ยกเลิก</string>
+    
+    <string name="settings_restart_confirm_message">รีสตาร์ทเกตเวย์ตอนนี้หรือไม่?</string>
+    <string name="settings_restart_confirm_yes">ใช่</string>
+    <string name="settings_restart_confirm_no">ไม่</string>
+<string name="settings_select_model">เลือกโมเดล</string>
+    <string name="settings_model_default">ค่าเริ่มต้น (Auto Select Free)</string>
+    <string name="settings_model_restart_hint">เริ่มต้น gateway ใหม่เพื่อใช้โมเดลใหม่</string>
+    <string name="settings_model_loading">กำลังโหลดโมเดล…</string>
+    <string name="settings_model_load_error">ไม่สามารถโหลดโมเดล: %1$s</string>
+    <string name="settings_model_retry">ลองใหม่</string>
+    <string name="settings_model_none_found">ไม่พบโมเดลที่มีการรองรับเครื่องมือ</string>
+    <string name="settings_model_close">ปิด</string>
+    <string name="settings_model_section_free">ฟรี</string>
+    <string name="settings_model_free_warning">โมเดลฟรีอาจช้าหรือไม่ตอบสนองในช่วงที่มีความต้องการสูง</string>
+    <string name="settings_model_section_paid">ที่เสียค่าใช้</string>
+    <string name="settings_section_about">เกี่ยวกับ</string>
+    <string name="settings_disclaimer">แอปนี้ไม่ใช่แอปอย่างเป็นทางการของ OpenClaw</string>
+
+    <!-- Tools -->
+    <string name="settings_section_tools">เครื่องมือ</string>
+    <string name="settings_brave_search_key">คีย์ API Brave Search</string>
+    <string name="settings_brave_search_desc">เปิดใช้งานการค้นหาเว็บสำหรับเอเจนต์ AI ไม่บังคับ — ปล่อยว่างเพื่อปิดใช้งาน</string>
+    <string name="settings_brave_search_optional">ยังไม่ได้กำหนดค่า (ไม่บังคับ)</string>
+    <string name="settings_brave_search_get_key">รับคีย์ API Brave Search →</string>
+
+    <!-- Channels -->
+    <string name="settings_section_channels">ช่องทาง</string>
+    <string name="settings_whatsapp_desc">เชื่อมต่อด้วยการสแกน QR โค้ด</string>
+    <string name="settings_telegram_desc">เชื่อมต่อด้วย Bot Token</string>
+    <string name="settings_discord_desc">เชื่อมต่อด้วย Bot Token</string>
+    <string name="settings_token_configured">กำหนดค่าแล้ว</string>
+    <string name="settings_token_not_configured">ยังไม่ได้กำหนดค่า</string>
+    <string name="settings_bot_token_title">Bot Token</string>
+    <string name="settings_bot_token_hint">กรอก Bot Token</string>
+    <string name="settings_bot_token_help">สร้างบอท %1$s →</string>
+    <string name="settings_channels_restart_hint">รีสตาร์ทเกตเวย์เพื่อใช้การเปลี่ยนแปลงช่องทาง</string>
+    <string name="dashboard_no_channels">ยังไม่ได้ตั้งค่าช่องทาง</string>
+    <string name="dashboard_whatsapp_qr_title">QR โค้ด WhatsApp</string>
+    <string name="dashboard_whatsapp_qr_instruction">เปิด WhatsApp → อุปกรณ์ที่เชื่อมต่อ → เชื่อมต่ออุปกรณ์ → สแกน QR โค้ดนี้</string>
+    <string name="dashboard_whatsapp_qr_error">ไม่สามารถสร้าง QR โค้ดได้</string>
+
+    <!-- Pairing -->
+    <string name="pairing_requests_title">คำขอจับคู่</string>
+    <string name="pairing_approve">อนุมัติ</string>
+    <string name="pairing_deny">ปฏิเสธ</string>
+    <string name="pairing_code_label">รหัส: %1$s</string>
+
+    <!-- WhatsApp Connect -->
+    <string name="whatsapp_connect_title">WhatsApp</string>
+    <string name="whatsapp_connect_desc">สแกน QR โค้ดเพื่อเชื่อมต่อ</string>
+    <string name="whatsapp_connect_btn">เชื่อมต่อ</string>
+    <string name="whatsapp_qr_loading">กำลังสร้าง QR โค้ด…</string>
+    <string name="whatsapp_connected">เชื่อมต่อแล้ว!</string>
+    <string name="whatsapp_connect_error">การเชื่อมต่อล้มเหลว: %1$s</string>
+    <string name="whatsapp_qr_share">แชร์</string>
+
+    <!-- Pairing Notification -->
+    <string name="pairing_notification_channel">คำขอจับคู่</string>
+    <string name="pairing_notification_title">คำขอจับคู่ใหม่</string>
+    <string name="pairing_notification_text">%1$s: %2$s</string>
+    <string name="settings_codex_oauth_title">OpenAI Codex OAuth</string>
+    <string name="settings_codex_oauth_signing_in">Signing in…</string>
+    <string name="settings_channel_whatsapp">WhatsApp</string>
+    <string name="settings_channel_telegram">Telegram</string>
+    <string name="settings_channel_discord">Discord</string>
+    <string name="settings_about_version">andClaw v%1$s</string>
+    <string name="settings_about_powered_by">Powered by OpenClaw</string>
+    <string name="settings_provider_openai_api">%1$s (API)</string>
+    <string name="settings_provider_openai_codex">%1$s (Codex OAuth)</string>
+    <string name="settings_bot_token_dialog_title">%1$s Bot Token</string>
+    <string name="settings_bot_restart_notice_message">The gateway will restart.</string>
+</resources>
+
+
+
+
+
+
+
+
+
+
+
+

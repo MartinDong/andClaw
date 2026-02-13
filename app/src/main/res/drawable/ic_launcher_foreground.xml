@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Claw icon -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M54,30 C54,30 42,42 42,54 C42,60.6 47.4,66 54,66 C60.6,66 66,60.6 66,54 C66,42 54,30 54,30Z"/>
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M38,34 C38,34 30,42 30,50 C30,54.4 33.6,58 38,58 C42.4,58 46,54.4 46,50 C46,42 38,34 38,34Z"/>
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M70,34 C70,34 62,42 62,50 C62,54.4 65.6,58 70,58 C74.4,58 78,54.4 78,50 C78,42 70,34 70,34Z"/>
+</vector>

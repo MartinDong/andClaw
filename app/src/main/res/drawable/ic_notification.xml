@@ -1,0 +1,18 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <!-- Center claw (tallest) -->
+    <path
+        android:fillColor="@android:color/white"
+        android:pathData="M12,3 C12,3 6.5,8.5 6.5,14.5 C6.5,17.5 9,20 12,20 C15,20 17.5,17.5 17.5,14.5 C17.5,8.5 12,3 12,3Z"/>
+    <!-- Left claw -->
+    <path
+        android:fillColor="@android:color/white"
+        android:pathData="M5,5.5 C5,5.5 1.5,9 1.5,12.5 C1.5,14.5 3,16 5,16 C7,16 8.5,14.5 8.5,12.5 C8.5,9 5,5.5 5,5.5Z"/>
+    <!-- Right claw -->
+    <path
+        android:fillColor="@android:color/white"
+        android:pathData="M19,5.5 C19,5.5 15.5,9 15.5,12.5 C15.5,14.5 17,16 19,16 C21,16 22.5,14.5 22.5,12.5 C22.5,9 19,5.5 19,5.5Z"/>
+</vector>

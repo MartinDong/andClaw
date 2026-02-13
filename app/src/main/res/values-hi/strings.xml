@@ -1,0 +1,194 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">andClaw</string>
+    <string name="notification_channel_name">OpenClaw Gateway</string>
+    <string name="notification_channel_description">OpenClaw गेटवे चलने की स्थिति</string>
+    <string name="notification_waiting">प्रतीक्षा में</string>
+    <string name="notification_running">चल रहा है | %1$s</string>
+    <string name="notification_starting">शुरू हो रहा है…</string>
+    <string name="notification_stopping">बंद हो रहा है…</string>
+    <string name="notification_error">त्रुटि: %1$s</string>
+    <string name="notification_stopped">बंद</string>
+    <string name="notification_unknown">अज्ञात</string>
+    <string name="notification_action_stop">बंद करें</string>
+    <string name="setup_subtitle">Android पर OpenClaw चलाएं</string>
+    <string name="setup_storage">संग्रहण</string>
+    <string name="setup_storage_mb">%1$d MB</string>
+    <string name="setup_proot_ready">तैयार</string>
+    <string name="setup_proot_unavailable">उपलब्ध नहीं</string>
+    <string name="setup_description">सब कुछ शामिल है। बस नीचे दिए गए बटन पर टैप करें।</string>
+    <string name="setup_steps_detail">1. वातावरण तैयार करें\n2. घटक स्थापित करें\n3. AI इंजन सेट अप करें\n4. अंतिम कॉन्फ़िगरेशन</string>
+    <string name="setup_estimate">1-2 मिनट लगते हैं</string>
+    <string name="setup_btn_start">सेटअप शुरू करें</string>
+    <string name="setup_btn_next_step">जारी रखें</string>
+    <string name="setup_btn_retry">पुनः प्रयास करें</string>
+    <string name="setup_error_default">सेटअप के दौरान एक त्रुटि हुई</string>
+    <string name="setup_err_storage">अपर्याप्त संग्रहण (कम से कम 1.5 GB आवश्यक)</string>
+    <string name="setup_err_proot">proot बाइनरी APK में शामिल नहीं है।\nscripts/setup-assets.sh चलाएं और फिर से बिल्ड करें।</string>
+    <string name="step_idle">निष्क्रिय</string>
+    <string name="step_checking_proot">तैयारी हो रही है…</string>
+    <string name="step_extracting_rootfs">वातावरण सेट अप हो रहा है…</string>
+    <string name="step_configuring_rootfs">कॉन्फ़िगर किया जा रहा है…</string>
+    <string name="step_extracting_nodejs">घटक स्थापित किए जा रहे हैं…</string>
+    <string name="step_installing_tools">उपकरण स्थापित किए जा रहे हैं…</string>
+    <string name="step_installing_openclaw">AI इंजन स्थापित किया जा रहा है…</string>
+    <string name="step_installing_chromium">ब्राउज़र स्थापित किया जा रहा है…</string>
+    <string name="step_applying_patches">अनुकूलन किया जा रहा है…</string>
+    <string name="step_verifying">लगभग तैयार…</string>
+    <string name="step_onboarding">इंजन शुरू हो रहा है…</string>
+    <string name="step_complete">सेटअप पूरा!</string>
+    <string name="step_failed">सेटअप विफल</string>
+    <string name="welcome_subtitle">आपके फोन पर AI एजेंट गेटवे</string>
+    <string name="welcome_openrouter_desc">OpenRouter एक एकीकृत AI गेटवे है जो आपको एक ही खाते से OpenAI, Google, Anthropic और अन्य AI मॉडल तक पहुंच प्रदान करता है।</string>
+    <string name="welcome_connect_button">3 सेकंड में OpenRouter से कनेक्ट करें</string>
+    <string name="welcome_free_models">Google से साइन अप करें · भुगतान छोड़ें और मुफ्त मॉडल उपयोग करें</string>
+    <string name="welcome_connecting">कनेक्ट हो रहा है…</string>
+    <string name="welcome_error">कनेक्शन विफल: %1$s</string>
+    <string name="onboarding_btn_previous">पिछला</string>
+    <string name="onboarding_btn_next">अगला</string>
+    <string name="onboarding_btn_done">पूर्ण</string>
+    <string name="onboarding_btn_skip">अभी के लिए छोड़ें</string>
+    <string name="onboarding_provider_title">AI प्रदाता चुनें</string>
+    <string name="onboarding_provider_subtitle">OpenClaw के लिए AI मॉडल प्रदाता चुनें</string>
+    <string name="onboarding_provider_anthropic">Claude मॉडल का उपयोग करें</string>
+    <string name="onboarding_provider_openai">GPT मॉडल का उपयोग करें</string>
+    <string name="onboarding_provider_google">Gemini मॉडल का उपयोग करें</string>
+    <string name="onboarding_provider_openrouter">OpenRouter (मल्टी-मॉडल एकीकृत गेटवे)</string>
+    <string name="welcome_manual_input">API कुंजी मैन्युअल रूप से दर्ज करें</string>
+    <string name="welcome_manual_collapse">बंद करें</string>
+    <string name="onboarding_apikey_title">API कुंजी दर्ज करें</string>
+    <string name="onboarding_get_key">OpenRouter API कुंजी प्राप्त करें</string>
+    <string name="onboarding_apikey_subtitle">अपनी %1$s API कुंजी दर्ज करें</string>
+    <string name="onboarding_apikey_invalid">कृपया एक मान्य API कुंजी दर्ज करें</string>
+    <string name="onboarding_apikey_security">आपकी API कुंजी केवल इस डिवाइस पर सुरक्षित रूप से संग्रहीत है।\nइसे कभी भी बाहरी सर्वर को नहीं भेजा जाता है।</string>
+    <string name="onboarding_channel_title">चैनल एकीकरण</string>
+    <string name="onboarding_channel_subtitle">आप गेटवे शुरू करने के बाद चैनल कनेक्ट कर सकते हैं</string>
+    <string name="onboarding_whatsapp_desc">QR कोड स्कैन करके जोड़ी करें</string>
+    <string name="onboarding_bot_token_desc">बॉट टोकन के साथ कनेक्ट करें</string>
+    <string name="onboarding_signal_desc">फोन नंबर के साथ कनेक्ट करें</string>
+    <string name="onboarding_channel_note">गेटवे शुरू करने के बाद चैनल एकीकरण को सेटिंग्स में भी कॉन्फ़िगर किया जा सकता है</string>
+    <string name="dashboard_cd_settings">सेटिंग्स</string>
+    <string name="dashboard_status_running">चल रहा है</string>
+    <string name="dashboard_status_starting">शुरू हो रहा है…</string>
+    <string name="dashboard_status_stopping">बंद हो रहा है…</string>
+    <string name="dashboard_status_error">त्रुटि</string>
+    <string name="dashboard_status_stopped">बंद</string>
+    <string name="dashboard_btn_start">शुरू करें</string>
+    <string name="dashboard_apikey_required_title">API कुंजी आवश्यक है</string>
+    <string name="dashboard_apikey_required_message">गेटवे शुरू करने से पहले कृपया सेटिंग्स में अपनी API कुंजी सेट अप करें।</string>
+    <string name="dashboard_apikey_go_settings">सेटिंग्स पर जाएं</string>
+    <string name="dashboard_apikey_dismiss">बाद में</string>
+    <string name="dashboard_btn_stop">बंद करें</string>
+    <string name="dashboard_btn_restart">पुनः शुरू करें</string>
+    <string name="dashboard_channels_value">%1$d</string>
+    <string name="dashboard_label_memory">मेमोरी</string>
+    <string name="dashboard_memory_value">%1$d MB</string>
+    <string name="dashboard_label_battery">बैटरी</string>
+    <string name="dashboard_model_label">AI मॉडल</string>
+    <string name="dashboard_log_title">लॉग</string>
+    <string name="dashboard_log_empty">गेटवे शुरू होने के बाद यहां लॉग दिखाई देंगे</string>
+    <string name="settings_title">सेटिंग्स</string>
+    <string name="settings_cd_back">वापस</string>
+    <string name="settings_section_gateway">गेटवे</string>
+    <string name="settings_auto_start">बूट पर स्वचालित रूप से शुरू करें</string>
+    <string name="settings_auto_start_desc">डिवाइस पुनः शुरू होने पर गेटवे स्वचालित रूप से शुरू करें</string>
+    <string name="settings_charge_only">केवल चार्जिंग के दौरान चलाएं</string>
+    <string name="settings_charge_only_desc">गेटवे को केवल चार्जिंग के दौरान सक्रिय रखें</string>
+    <string name="settings_section_battery">बैटरी</string>
+    <string name="settings_battery_optimization">बैटरी अनुकूलन छूट</string>
+    <string name="settings_battery_exempted">पहले से ही छूट प्राप्त — स्थिर पृष्ठभूमि संचालन</string>
+    <string name="settings_battery_not_exempted">कॉन्फ़िगर करने के लिए टैप करें — पृष्ठभूमि स्थिरता में सुधार</string>
+    <string name="settings_cannot_open">सेटिंग्स नहीं खोल सकते</string>
+    <string name="settings_section_ai">AI मॉडल</string>
+    <string name="settings_current_provider">वर्तमान प्रदाता</string>
+    <string name="settings_change_provider">प्रदाता बदलें</string>
+    <string name="settings_api_key">API कुंजी</string>
+    <string name="settings_api_key_configured">कॉन्फ़िगर किया गया</string>
+    <string name="settings_api_key_not_configured">कॉन्फ़िगर नहीं किया गया</string>
+    <string name="settings_api_key_hint">अपनी API कुंजी दर्ज करें</string>
+    <string name="settings_api_key_save">सहेजें</string>
+    <string name="settings_api_key_cancel">रद्द करें</string>
+    
+    <string name="settings_restart_confirm_message">क्या अभी गेटवे पुनः आरंभ करें?</string>
+    <string name="settings_restart_confirm_yes">हाँ</string>
+    <string name="settings_restart_confirm_no">नहीं</string>
+<string name="settings_select_model">मॉडल चुनें</string>
+    <string name="settings_model_default">डिफ़ॉल्ट (Auto Select Free)</string>
+    <string name="settings_model_restart_hint">नए मॉडल को लागू करने के लिए गेटवे को पुनः शुरू करें</string>
+    <string name="settings_model_loading">मॉडल लोड किए जा रहे हैं…</string>
+    <string name="settings_model_load_error">मॉडल लोड करने में विफल: %1$s</string>
+    <string name="settings_model_retry">पुनः प्रयास करें</string>
+    <string name="settings_model_none_found">टूल समर्थन वाले कोई मॉडल नहीं मिले</string>
+    <string name="settings_model_close">बंद करें</string>
+    <string name="settings_model_section_free">निःशुल्क</string>
+    <string name="settings_model_free_warning">मुफ़्त मॉडल उच्च मांग के दौरान धीमे या अनुत्तरदायी हो सकते हैं</string>
+    <string name="settings_model_section_paid">भुगतान</string>
+    <string name="settings_section_about">के बारे में</string>
+    <string name="settings_disclaimer">यह ऐप एक आधिकारिक OpenClaw ऐप नहीं है</string>
+
+    <!-- Tools -->
+    <string name="settings_section_tools">टूल्स</string>
+    <string name="settings_brave_search_key">Brave Search API कुंजी</string>
+    <string name="settings_brave_search_desc">AI एजेंट के लिए वेब सर्च सक्षम करता है। वैकल्पिक — अक्षम करने के लिए खाली छोड़ें।</string>
+    <string name="settings_brave_search_optional">कॉन्फ़िगर नहीं (वैकल्पिक)</string>
+    <string name="settings_brave_search_get_key">Brave Search API कुंजी प्राप्त करें →</string>
+
+    <!-- Channels -->
+    <string name="settings_section_channels">चैनल</string>
+    <string name="settings_whatsapp_desc">QR कोड स्कैन करके कनेक्ट करें</string>
+    <string name="settings_telegram_desc">बॉट टोकन से कनेक्ट करें</string>
+    <string name="settings_discord_desc">बॉट टोकन से कनेक्ट करें</string>
+    <string name="settings_token_configured">कॉन्फ़िगर किया गया</string>
+    <string name="settings_token_not_configured">कॉन्फ़िगर नहीं किया गया</string>
+    <string name="settings_bot_token_title">बॉट टोकन</string>
+    <string name="settings_bot_token_hint">बॉट टोकन दर्ज करें</string>
+    <string name="settings_bot_token_help">%1$s बॉट बनाएं →</string>
+    <string name="settings_channels_restart_hint">चैनल बदलाव लागू करने के लिए गेटवे पुनः आरंभ करें</string>
+    <string name="dashboard_no_channels">कोई चैनल कॉन्फ़िगर नहीं</string>
+    <string name="dashboard_whatsapp_qr_title">WhatsApp QR कोड</string>
+    <string name="dashboard_whatsapp_qr_instruction">WhatsApp खोलें → लिंक किए गए डिवाइस → डिवाइस लिंक करें → यह QR कोड स्कैन करें</string>
+    <string name="dashboard_whatsapp_qr_error">QR कोड जेनरेट करने में विफल</string>
+
+    <!-- Pairing -->
+    <string name="pairing_requests_title">पेयरिंग अनुरोध</string>
+    <string name="pairing_approve">स्वीकार</string>
+    <string name="pairing_deny">अस्वीकार</string>
+    <string name="pairing_code_label">कोड: %1$s</string>
+
+    <!-- WhatsApp Connect -->
+    <string name="whatsapp_connect_title">WhatsApp</string>
+    <string name="whatsapp_connect_desc">कनेक्ट करने के लिए QR कोड स्कैन करें</string>
+    <string name="whatsapp_connect_btn">कनेक्ट</string>
+    <string name="whatsapp_qr_loading">QR कोड बना रहा है…</string>
+    <string name="whatsapp_connected">कनेक्ट हो गया!</string>
+    <string name="whatsapp_connect_error">कनेक्शन विफल: %1$s</string>
+    <string name="whatsapp_qr_share">शेयर करें</string>
+
+    <!-- Pairing Notification -->
+    <string name="pairing_notification_channel">पेयरिंग अनुरोध</string>
+    <string name="pairing_notification_title">नया पेयरिंग अनुरोध</string>
+    <string name="pairing_notification_text">%1$s: %2$s</string>
+    <string name="settings_codex_oauth_title">OpenAI Codex OAuth</string>
+    <string name="settings_codex_oauth_signing_in">Signing in…</string>
+    <string name="settings_channel_whatsapp">WhatsApp</string>
+    <string name="settings_channel_telegram">Telegram</string>
+    <string name="settings_channel_discord">Discord</string>
+    <string name="settings_about_version">andClaw v%1$s</string>
+    <string name="settings_about_powered_by">Powered by OpenClaw</string>
+    <string name="settings_provider_openai_api">%1$s (API)</string>
+    <string name="settings_provider_openai_codex">%1$s (Codex OAuth)</string>
+    <string name="settings_bot_token_dialog_title">%1$s Bot Token</string>
+    <string name="settings_bot_restart_notice_message">The gateway will restart.</string>
+</resources>
+
+
+
+
+
+
+
+
+
+
+
+

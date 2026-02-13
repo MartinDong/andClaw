@@ -1,0 +1,194 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">andClaw</string>
+    <string name="notification_channel_name">OpenClaw Gateway</string>
+    <string name="notification_channel_description">Статус работы шлюза OpenClaw</string>
+    <string name="notification_waiting">Ожидание</string>
+    <string name="notification_running">Работает | %1$s</string>
+    <string name="notification_starting">Запуск…</string>
+    <string name="notification_stopping">Остановка…</string>
+    <string name="notification_error">Ошибка: %1$s</string>
+    <string name="notification_stopped">Остановлено</string>
+    <string name="notification_unknown">Неизвестно</string>
+    <string name="notification_action_stop">Остановить</string>
+    <string name="setup_subtitle">Запустить OpenClaw на Android</string>
+    <string name="setup_storage">Хранилище</string>
+    <string name="setup_storage_mb">%1$d МБ</string>
+    <string name="setup_proot_ready">Готово</string>
+    <string name="setup_proot_unavailable">Недоступно</string>
+    <string name="setup_description">Всё включено. Просто нажмите кнопку ниже.</string>
+    <string name="setup_steps_detail">1. Подготовка окружения\n2. Установка компонентов\n3. Настройка AI движка\n4. Финальная конфигурация</string>
+    <string name="setup_estimate">Займёт 1–2 минуты</string>
+    <string name="setup_btn_start">Начать установку</string>
+    <string name="setup_btn_next_step">Далее</string>
+    <string name="setup_btn_retry">Повторить</string>
+    <string name="setup_error_default">Произошла ошибка во время установки</string>
+    <string name="setup_err_storage">Недостаточно свободного места (требуется минимум 1,5 ГБ)</string>
+    <string name="setup_err_proot">Бинарный файл proot не включён в APK.\nЗапустите scripts/setup-assets.sh и пересоберите.</string>
+    <string name="step_idle">Ожидание</string>
+    <string name="step_checking_proot">Подготовка…</string>
+    <string name="step_extracting_rootfs">Настройка окружения…</string>
+    <string name="step_configuring_rootfs">Конфигурация…</string>
+    <string name="step_extracting_nodejs">Установка компонентов…</string>
+    <string name="step_installing_tools">Установка инструментов…</string>
+    <string name="step_installing_openclaw">Установка AI движка…</string>
+    <string name="step_installing_chromium">Установка браузера…</string>
+    <string name="step_applying_patches">Оптимизация…</string>
+    <string name="step_verifying">Почти готово…</string>
+    <string name="step_onboarding">Инициализация движка…</string>
+    <string name="step_complete">Установка завершена!</string>
+    <string name="step_failed">Установка не удалась</string>
+    <string name="welcome_subtitle">AI агент шлюз на вашем телефоне</string>
+    <string name="welcome_openrouter_desc">OpenRouter — это единый AI-шлюз, предоставляющий доступ к моделям OpenAI, Google, Anthropic и другим с одного аккаунта.</string>
+    <string name="welcome_connect_button">Подключиться к OpenRouter за 3 сек</string>
+    <string name="welcome_free_models">Регистрация через Google · Пропустите оплату для использования бесплатных моделей</string>
+    <string name="welcome_connecting">Подключение…</string>
+    <string name="welcome_error">Ошибка подключения: %1$s</string>
+    <string name="onboarding_btn_previous">Назад</string>
+    <string name="onboarding_btn_next">Далее</string>
+    <string name="onboarding_btn_done">Готово</string>
+    <string name="onboarding_btn_skip">Пропустить пока</string>
+    <string name="onboarding_provider_title">Выберите провайдера AI</string>
+    <string name="onboarding_provider_subtitle">Выберите провайдера модели AI для OpenClaw</string>
+    <string name="onboarding_provider_anthropic">Использовать модели Claude</string>
+    <string name="onboarding_provider_openai">Использовать модели GPT</string>
+    <string name="onboarding_provider_google">Использовать модели Gemini</string>
+    <string name="onboarding_provider_openrouter">OpenRouter (Единый шлюз для нескольких моделей)</string>
+    <string name="welcome_manual_input">Ввести API ключ вручную</string>
+    <string name="welcome_manual_collapse">Свернуть</string>
+    <string name="onboarding_apikey_title">Введите API ключ</string>
+    <string name="onboarding_get_key">Получить API ключ OpenRouter</string>
+    <string name="onboarding_apikey_subtitle">Введите ваш API ключ %1$s</string>
+    <string name="onboarding_apikey_invalid">Пожалуйста, введите корректный API ключ</string>
+    <string name="onboarding_apikey_security">Ваш API ключ хранится в безопасности только на этом устройстве.\nОн никогда не отправляется на внешние серверы.</string>
+    <string name="onboarding_channel_title">Интеграция каналов</string>
+    <string name="onboarding_channel_subtitle">Вы можете подключить каналы после запуска шлюза</string>
+    <string name="onboarding_whatsapp_desc">Спарировать через сканирование QR кода</string>
+    <string name="onboarding_bot_token_desc">Подключиться через токен бота</string>
+    <string name="onboarding_signal_desc">Подключиться через номер телефона</string>
+    <string name="onboarding_channel_note">Интеграция каналов также может быть настроена в Настройках после запуска шлюза</string>
+    <string name="dashboard_cd_settings">Настройки</string>
+    <string name="dashboard_status_running">Работает</string>
+    <string name="dashboard_status_starting">Запуск…</string>
+    <string name="dashboard_status_stopping">Остановка…</string>
+    <string name="dashboard_status_error">Ошибка</string>
+    <string name="dashboard_status_stopped">Остановлено</string>
+    <string name="dashboard_btn_start">Запустить</string>
+    <string name="dashboard_apikey_required_title">Требуется API ключ</string>
+    <string name="dashboard_apikey_required_message">Пожалуйста, настройте ваш API ключ в Настройках перед запуском шлюза.</string>
+    <string name="dashboard_apikey_go_settings">Перейти в Настройки</string>
+    <string name="dashboard_apikey_dismiss">Позже</string>
+    <string name="dashboard_btn_stop">Остановить</string>
+    <string name="dashboard_btn_restart">Перезагрузить</string>
+    <string name="dashboard_channels_value">%1$d</string>
+    <string name="dashboard_label_memory">Память</string>
+    <string name="dashboard_memory_value">%1$d МБ</string>
+    <string name="dashboard_label_battery">Батарея</string>
+    <string name="dashboard_model_label">AI модель</string>
+    <string name="dashboard_log_title">Логи</string>
+    <string name="dashboard_log_empty">Логи будут отображаться здесь после запуска шлюза</string>
+    <string name="settings_title">Настройки</string>
+    <string name="settings_cd_back">Назад</string>
+    <string name="settings_section_gateway">Шлюз</string>
+    <string name="settings_auto_start">Автоматический запуск при включении</string>
+    <string name="settings_auto_start_desc">Автоматически запускать шлюз при перезагрузке устройства</string>
+    <string name="settings_charge_only">Работать только во время зарядки</string>
+    <string name="settings_charge_only_desc">Держать шлюз активным только во время зарядки</string>
+    <string name="settings_section_battery">Батарея</string>
+    <string name="settings_battery_optimization">Исключение из оптимизации батареи</string>
+    <string name="settings_battery_exempted">Уже исключено — стабильная фоновая работа</string>
+    <string name="settings_battery_not_exempted">Нажмите для настройки — улучшает стабильность фоновой работы</string>
+    <string name="settings_cannot_open">Не удаётся открыть настройки</string>
+    <string name="settings_section_ai">AI модель</string>
+    <string name="settings_current_provider">Текущий провайдер</string>
+    <string name="settings_change_provider">Изменить провайдера</string>
+    <string name="settings_api_key">API ключ</string>
+    <string name="settings_api_key_configured">Настроен</string>
+    <string name="settings_api_key_not_configured">Не настроен</string>
+    <string name="settings_api_key_hint">Введите ваш API ключ</string>
+    <string name="settings_api_key_save">Сохранить</string>
+    <string name="settings_api_key_cancel">Отмена</string>
+    
+    <string name="settings_restart_confirm_message">Перезапустить шлюз сейчас?</string>
+    <string name="settings_restart_confirm_yes">Да</string>
+    <string name="settings_restart_confirm_no">Нет</string>
+<string name="settings_select_model">Выберите модель</string>
+    <string name="settings_model_default">По умолчанию (Auto Select Free)</string>
+    <string name="settings_model_restart_hint">Перезагрузите шлюз для применения новой модели</string>
+    <string name="settings_model_loading">Загрузка моделей…</string>
+    <string name="settings_model_load_error">Не удалось загрузить модели: %1$s</string>
+    <string name="settings_model_retry">Повторить</string>
+    <string name="settings_model_none_found">Модели с поддержкой инструментов не найдены</string>
+    <string name="settings_model_close">Закрыть</string>
+    <string name="settings_model_section_free">Бесплатные</string>
+    <string name="settings_model_free_warning">Бесплатные модели могут работать медленно или не отвечать при высокой нагрузке</string>
+    <string name="settings_model_section_paid">Платные</string>
+    <string name="settings_section_about">О приложении</string>
+    <string name="settings_disclaimer">Это приложение не является официальным приложением OpenClaw</string>
+
+    <!-- Tools -->
+    <string name="settings_section_tools">Инструменты</string>
+    <string name="settings_brave_search_key">API-ключ Brave Search</string>
+    <string name="settings_brave_search_desc">Включает веб-поиск для ИИ-агента. Необязательно — оставьте пустым для отключения.</string>
+    <string name="settings_brave_search_optional">Не настроено (необязательно)</string>
+    <string name="settings_brave_search_get_key">Получить API-ключ Brave Search →</string>
+
+    <!-- Channels -->
+    <string name="settings_section_channels">Каналы</string>
+    <string name="settings_whatsapp_desc">Подключить сканированием QR-кода</string>
+    <string name="settings_telegram_desc">Подключить с помощью токена бота</string>
+    <string name="settings_discord_desc">Подключить с помощью токена бота</string>
+    <string name="settings_token_configured">Настроено</string>
+    <string name="settings_token_not_configured">Не настроено</string>
+    <string name="settings_bot_token_title">Токен бота</string>
+    <string name="settings_bot_token_hint">Введите токен бота</string>
+    <string name="settings_bot_token_help">Создать бота %1$s →</string>
+    <string name="settings_channels_restart_hint">Перезапустите шлюз для применения изменений каналов</string>
+    <string name="dashboard_no_channels">Каналы не настроены</string>
+    <string name="dashboard_whatsapp_qr_title">QR-код WhatsApp</string>
+    <string name="dashboard_whatsapp_qr_instruction">Откройте WhatsApp → Связанные устройства → Привязать устройство → Отсканируйте этот QR-код</string>
+    <string name="dashboard_whatsapp_qr_error">Не удалось сгенерировать QR-код</string>
+
+    <!-- Pairing -->
+    <string name="pairing_requests_title">Запросы на сопряжение</string>
+    <string name="pairing_approve">Одобрить</string>
+    <string name="pairing_deny">Отклонить</string>
+    <string name="pairing_code_label">Код: %1$s</string>
+
+    <!-- WhatsApp Connect -->
+    <string name="whatsapp_connect_title">WhatsApp</string>
+    <string name="whatsapp_connect_desc">Отсканируйте QR-код для подключения</string>
+    <string name="whatsapp_connect_btn">Подключить</string>
+    <string name="whatsapp_qr_loading">Генерация QR-кода…</string>
+    <string name="whatsapp_connected">Подключено!</string>
+    <string name="whatsapp_connect_error">Ошибка подключения: %1$s</string>
+    <string name="whatsapp_qr_share">Поделиться</string>
+
+    <!-- Pairing Notification -->
+    <string name="pairing_notification_channel">Запросы сопряжения</string>
+    <string name="pairing_notification_title">Новый запрос сопряжения</string>
+    <string name="pairing_notification_text">%1$s: %2$s</string>
+    <string name="settings_codex_oauth_title">OpenAI Codex OAuth</string>
+    <string name="settings_codex_oauth_signing_in">Signing in…</string>
+    <string name="settings_channel_whatsapp">WhatsApp</string>
+    <string name="settings_channel_telegram">Telegram</string>
+    <string name="settings_channel_discord">Discord</string>
+    <string name="settings_about_version">andClaw v%1$s</string>
+    <string name="settings_about_powered_by">Powered by OpenClaw</string>
+    <string name="settings_provider_openai_api">%1$s (API)</string>
+    <string name="settings_provider_openai_codex">%1$s (Codex OAuth)</string>
+    <string name="settings_bot_token_dialog_title">%1$s Bot Token</string>
+    <string name="settings_bot_restart_notice_message">The gateway will restart.</string>
+</resources>
+
+
+
+
+
+
+
+
+
+
+
+

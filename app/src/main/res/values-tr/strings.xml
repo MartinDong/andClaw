@@ -1,0 +1,194 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">andClaw</string>
+    <string name="notification_channel_name">OpenClaw Ağ Geçidi</string>
+    <string name="notification_channel_description">OpenClaw ağ geçidi çalışma durumu</string>
+    <string name="notification_waiting">Bekleniyor</string>
+    <string name="notification_running">Çalışıyor | %1$s</string>
+    <string name="notification_starting">Başlatılıyor…</string>
+    <string name="notification_stopping">Durduruluyor…</string>
+    <string name="notification_error">Hata: %1$s</string>
+    <string name="notification_stopped">Durduruldu</string>
+    <string name="notification_unknown">Bilinmiyor</string>
+    <string name="notification_action_stop">Durdur</string>
+    <string name="setup_subtitle">Android\'de OpenClaw Çalıştırın</string>
+    <string name="setup_storage">Depolama</string>
+    <string name="setup_storage_mb">%1$d MB</string>
+    <string name="setup_proot_ready">Hazır</string>
+    <string name="setup_proot_unavailable">Kullanılamıyor</string>
+    <string name="setup_description">Her şey dahil. Aşağıdaki düğmeye dokunun.</string>
+    <string name="setup_steps_detail">1. Ortamı hazırlayın\n2. Bileşenleri yükleyin\n3. Yapay zeka motorunu kurun\n4. Son yapılandırma</string>
+    <string name="setup_estimate">1–2 dakika sürer</string>
+    <string name="setup_btn_start">Kuruluma Başla</string>
+    <string name="setup_btn_next_step">Devam Et</string>
+    <string name="setup_btn_retry">Yeniden Dene</string>
+    <string name="setup_error_default">Kurulum sırasında bir hata oluştu</string>
+    <string name="setup_err_storage">Yetersiz depolama (minimum 1,5 GB gereklidir)</string>
+    <string name="setup_err_proot">proot ikili dosyası APK\'ye dahil değildir.\nscripts/setup-assets.sh dosyasını çalıştırın ve yeniden derleyin.</string>
+    <string name="step_idle">Boş</string>
+    <string name="step_checking_proot">Hazırlanıyor…</string>
+    <string name="step_extracting_rootfs">Ortam ayarlanıyor…</string>
+    <string name="step_configuring_rootfs">Yapılandırılıyor…</string>
+    <string name="step_extracting_nodejs">Bileşenler yükleniyor…</string>
+    <string name="step_installing_tools">Araçlar yükleniyor…</string>
+    <string name="step_installing_openclaw">Yapay zeka motoru yükleniyor…</string>
+    <string name="step_installing_chromium">Tarayıcı yükleniyor…</string>
+    <string name="step_applying_patches">Optimize ediliyor…</string>
+    <string name="step_verifying">Neredeyse bitti…</string>
+    <string name="step_onboarding">Motor başlatılıyor…</string>
+    <string name="step_complete">Kurulum tamamlandı!</string>
+    <string name="step_failed">Kurulum başarısız</string>
+    <string name="welcome_subtitle">Telefonunuzda yapay zeka aracı ağ geçidi</string>
+    <string name="welcome_openrouter_desc">OpenRouter, tek bir hesapla OpenAI, Google, Anthropic ve daha fazlasının modellerine erişim sağlayan birleşik bir AI geçididir.</string>
+    <string name="welcome_connect_button">OpenRouter ile 3 saniyede bağlan</string>
+    <string name="welcome_free_models">Google ile kaydolun · Ödemeyi atlayarak ücretsiz modelleri kullanın</string>
+    <string name="welcome_connecting">Bağlanıyor…</string>
+    <string name="welcome_error">Bağlantı başarısız: %1$s</string>
+    <string name="onboarding_btn_previous">Önceki</string>
+    <string name="onboarding_btn_next">Sonraki</string>
+    <string name="onboarding_btn_done">Bitti</string>
+    <string name="onboarding_btn_skip">Şimdilik Geç</string>
+    <string name="onboarding_provider_title">Yapay Zeka Sağlayıcısını Seçin</string>
+    <string name="onboarding_provider_subtitle">OpenClaw için yapay zeka modeli sağlayıcısını seçin</string>
+    <string name="onboarding_provider_anthropic">Claude modellerini kullan</string>
+    <string name="onboarding_provider_openai">GPT modellerini kullan</string>
+    <string name="onboarding_provider_google">Gemini modellerini kullan</string>
+    <string name="onboarding_provider_openrouter">OpenRouter (Çok modelli birleşik ağ geçidi)</string>
+    <string name="welcome_manual_input">API anahtarını manuel girin</string>
+    <string name="welcome_manual_collapse">Kapat</string>
+    <string name="onboarding_apikey_title">API Anahtarını Girin</string>
+    <string name="onboarding_get_key">OpenRouter API Anahtarını Al</string>
+    <string name="onboarding_apikey_subtitle">%1$s API anahtarınızı girin</string>
+    <string name="onboarding_apikey_invalid">Lütfen geçerli bir API anahtarı girin</string>
+    <string name="onboarding_apikey_security">API anahtarınız güvenli bir şekilde yalnızca bu cihazda depolanır.\nBu hiçbir zaman harici sunuculara gönderilmez.</string>
+    <string name="onboarding_channel_title">Kanal Entegrasyonu</string>
+    <string name="onboarding_channel_subtitle">Ağ geçidini başlattıktan sonra kanalları bağlayabilirsiniz</string>
+    <string name="onboarding_whatsapp_desc">QR kodu tarayarak eşleyin</string>
+    <string name="onboarding_bot_token_desc">Bot Jetonu ile bağlan</string>
+    <string name="onboarding_signal_desc">Telefon numarası ile bağlan</string>
+    <string name="onboarding_channel_note">Kanal entegrasyonu, ağ geçidi başlatıldıktan sonra Ayarlar\'da da yapılandırılabilir</string>
+    <string name="dashboard_cd_settings">Ayarlar</string>
+    <string name="dashboard_status_running">Çalışıyor</string>
+    <string name="dashboard_status_starting">Başlatılıyor…</string>
+    <string name="dashboard_status_stopping">Durduruluyor…</string>
+    <string name="dashboard_status_error">Hata</string>
+    <string name="dashboard_status_stopped">Durduruldu</string>
+    <string name="dashboard_btn_start">Başlat</string>
+    <string name="dashboard_apikey_required_title">API anahtarı gerekli</string>
+    <string name="dashboard_apikey_required_message">Ağ geçidini başlatmadan önce Ayarlar\'da API anahtarınızı ayarlayın.</string>
+    <string name="dashboard_apikey_go_settings">Ayarlara Git</string>
+    <string name="dashboard_apikey_dismiss">Daha Sonra</string>
+    <string name="dashboard_btn_stop">Durdur</string>
+    <string name="dashboard_btn_restart">Yeniden Başlat</string>
+    <string name="dashboard_channels_value">%1$d</string>
+    <string name="dashboard_label_memory">Bellek</string>
+    <string name="dashboard_memory_value">%1$d MB</string>
+    <string name="dashboard_label_battery">Pil</string>
+    <string name="dashboard_model_label">Yapay Zeka Modeli</string>
+    <string name="dashboard_log_title">Günlükler</string>
+    <string name="dashboard_log_empty">Ağ geçidi başladıktan sonra günlükler burada görüntülenecek</string>
+    <string name="settings_title">Ayarlar</string>
+    <string name="settings_cd_back">Geri</string>
+    <string name="settings_section_gateway">Ağ Geçidi</string>
+    <string name="settings_auto_start">Önyükleme sırasında otomatik başlat</string>
+    <string name="settings_auto_start_desc">Cihaz yeniden başlatıldığında ağ geçidini otomatik olarak başlat</string>
+    <string name="settings_charge_only">Yalnızca şarj sırasında çalıştır</string>
+    <string name="settings_charge_only_desc">Ağ geçidini yalnızca şarj sırasında etkin tutun</string>
+    <string name="settings_section_battery">Pil</string>
+    <string name="settings_battery_optimization">Pil optimizasyonu muafiyeti</string>
+    <string name="settings_battery_exempted">Zaten muaf — kararlı arka plan işlemi</string>
+    <string name="settings_battery_not_exempted">Yapılandırmak için dokunun — arka plan istikrarını artırır</string>
+    <string name="settings_cannot_open">Ayarlar açılamıyor</string>
+    <string name="settings_section_ai">Yapay Zeka Modeli</string>
+    <string name="settings_current_provider">Mevcut sağlayıcı</string>
+    <string name="settings_change_provider">Sağlayıcıyı değiştir</string>
+    <string name="settings_api_key">API Anahtarı</string>
+    <string name="settings_api_key_configured">Yapılandırıldı</string>
+    <string name="settings_api_key_not_configured">Yapılandırılmadı</string>
+    <string name="settings_api_key_hint">API anahtarınızı girin</string>
+    <string name="settings_api_key_save">Kaydet</string>
+    <string name="settings_api_key_cancel">İptal</string>
+    
+    <string name="settings_restart_confirm_message">Ağ geçidi şimdi yeniden başlatılsın mı?</string>
+    <string name="settings_restart_confirm_yes">Evet</string>
+    <string name="settings_restart_confirm_no">Hayır</string>
+<string name="settings_select_model">Model seçin</string>
+    <string name="settings_model_default">Varsayılan (Auto Select Free)</string>
+    <string name="settings_model_restart_hint">Yeni modeli uygulamak için ağ geçidini yeniden başlatın</string>
+    <string name="settings_model_loading">Modeller yükleniyor…</string>
+    <string name="settings_model_load_error">Modeller yüklenemedi: %1$s</string>
+    <string name="settings_model_retry">Yeniden Dene</string>
+    <string name="settings_model_none_found">Araç desteği olan hiçbir model bulunamadı</string>
+    <string name="settings_model_close">Kapat</string>
+    <string name="settings_model_section_free">Ücretsiz</string>
+    <string name="settings_model_free_warning">Ücretsiz modeller yoğun talep sırasında yavaş olabilir veya yanıt vermeyebilir</string>
+    <string name="settings_model_section_paid">Ücretli</string>
+    <string name="settings_section_about">Hakkında</string>
+    <string name="settings_disclaimer">Bu uygulama resmi bir OpenClaw uygulaması değildir</string>
+
+    <!-- Tools -->
+    <string name="settings_section_tools">Araçlar</string>
+    <string name="settings_brave_search_key">Brave Search API Anahtarı</string>
+    <string name="settings_brave_search_desc">AI ajanı için web aramasını etkinleştirir. İsteğe bağlı — devre dışı bırakmak için boş bırakın.</string>
+    <string name="settings_brave_search_optional">Yapılandırılmadı (isteğe bağlı)</string>
+    <string name="settings_brave_search_get_key">Brave Search API anahtarı al →</string>
+
+    <!-- Channels -->
+    <string name="settings_section_channels">Kanallar</string>
+    <string name="settings_whatsapp_desc">QR kod tarayarak bağlan</string>
+    <string name="settings_telegram_desc">Bot tokeni ile bağlan</string>
+    <string name="settings_discord_desc">Bot tokeni ile bağlan</string>
+    <string name="settings_token_configured">Yapılandırıldı</string>
+    <string name="settings_token_not_configured">Yapılandırılmadı</string>
+    <string name="settings_bot_token_title">Bot Tokeni</string>
+    <string name="settings_bot_token_hint">Bot tokenini girin</string>
+    <string name="settings_bot_token_help">%1$s botu oluştur →</string>
+    <string name="settings_channels_restart_hint">Kanal değişikliklerini uygulamak için ağ geçidini yeniden başlatın</string>
+    <string name="dashboard_no_channels">Yapılandırılmış kanal yok</string>
+    <string name="dashboard_whatsapp_qr_title">WhatsApp QR Kodu</string>
+    <string name="dashboard_whatsapp_qr_instruction">WhatsApp\'ı açın → Bağlı cihazlar → Cihaz bağla → Bu QR kodu tarayın</string>
+    <string name="dashboard_whatsapp_qr_error">QR kodu oluşturulamadı</string>
+
+    <!-- Pairing -->
+    <string name="pairing_requests_title">Eşleştirme İstekleri</string>
+    <string name="pairing_approve">Onayla</string>
+    <string name="pairing_deny">Reddet</string>
+    <string name="pairing_code_label">Kod: %1$s</string>
+
+    <!-- WhatsApp Connect -->
+    <string name="whatsapp_connect_title">WhatsApp</string>
+    <string name="whatsapp_connect_desc">Bağlanmak için QR kodu tarayın</string>
+    <string name="whatsapp_connect_btn">Bağlan</string>
+    <string name="whatsapp_qr_loading">QR kodu oluşturuluyor…</string>
+    <string name="whatsapp_connected">Bağlandı!</string>
+    <string name="whatsapp_connect_error">Bağlantı başarısız: %1$s</string>
+    <string name="whatsapp_qr_share">Paylaş</string>
+
+    <!-- Pairing Notification -->
+    <string name="pairing_notification_channel">Eşleştirme İstekleri</string>
+    <string name="pairing_notification_title">Yeni Eşleştirme İsteği</string>
+    <string name="pairing_notification_text">%1$s: %2$s</string>
+    <string name="settings_codex_oauth_title">OpenAI Codex OAuth</string>
+    <string name="settings_codex_oauth_signing_in">Signing in…</string>
+    <string name="settings_channel_whatsapp">WhatsApp</string>
+    <string name="settings_channel_telegram">Telegram</string>
+    <string name="settings_channel_discord">Discord</string>
+    <string name="settings_about_version">andClaw v%1$s</string>
+    <string name="settings_about_powered_by">Powered by OpenClaw</string>
+    <string name="settings_provider_openai_api">%1$s (API)</string>
+    <string name="settings_provider_openai_codex">%1$s (Codex OAuth)</string>
+    <string name="settings_bot_token_dialog_title">%1$s Bot Token</string>
+    <string name="settings_bot_restart_notice_message">The gateway will restart.</string>
+</resources>
+
+
+
+
+
+
+
+
+
+
+
+

@@ -1,0 +1,194 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">andClaw</string>
+    <string name="notification_channel_name">OpenClaw Gateway</string>
+    <string name="notification_channel_description">Trạng thái chạy của cổng OpenClaw</string>
+    <string name="notification_waiting">Chờ đợi</string>
+    <string name="notification_running">Đang chạy | %1$s</string>
+    <string name="notification_starting">Đang khởi động…</string>
+    <string name="notification_stopping">Đang dừng…</string>
+    <string name="notification_error">Lỗi: %1$s</string>
+    <string name="notification_stopped">Đã dừng</string>
+    <string name="notification_unknown">Không xác định</string>
+    <string name="notification_action_stop">Dừng</string>
+    <string name="setup_subtitle">Chạy OpenClaw trên Android</string>
+    <string name="setup_storage">Bộ nhớ</string>
+    <string name="setup_storage_mb">%1$d MB</string>
+    <string name="setup_proot_ready">Sẵn sàng</string>
+    <string name="setup_proot_unavailable">Không khả dụng</string>
+    <string name="setup_description">Mọi thứ đã được bao gồm. Chỉ cần nhấn nút bên dưới.</string>
+    <string name="setup_steps_detail">1. Chuẩn bị môi trường\n2. Cài đặt các thành phần\n3. Thiết lập công cụ AI\n4. Cấu hình cuối cùng</string>
+    <string name="setup_estimate">Mất 1–2 phút</string>
+    <string name="setup_btn_start">Bắt đầu cài đặt</string>
+    <string name="setup_btn_next_step">Tiếp tục</string>
+    <string name="setup_btn_retry">Thử lại</string>
+    <string name="setup_error_default">Đã xảy ra lỗi trong quá trình cài đặt</string>
+    <string name="setup_err_storage">Bộ nhớ không đủ (yêu cầu tối thiểu 1,5 GB)</string>
+    <string name="setup_err_proot">Tệp nhị phân proot không có trong APK.\nChạy scripts/setup-assets.sh và xây dựng lại.</string>
+    <string name="step_idle">Chế độ chờ</string>
+    <string name="step_checking_proot">Đang chuẩn bị…</string>
+    <string name="step_extracting_rootfs">Đang thiết lập môi trường…</string>
+    <string name="step_configuring_rootfs">Đang cấu hình…</string>
+    <string name="step_extracting_nodejs">Đang cài đặt các thành phần…</string>
+    <string name="step_installing_tools">Đang cài đặt công cụ…</string>
+    <string name="step_installing_openclaw">Đang cài đặt công cụ AI…</string>
+    <string name="step_installing_chromium">Đang cài đặt trình duyệt…</string>
+    <string name="step_applying_patches">Đang tối ưu hóa…</string>
+    <string name="step_verifying">Sắp hoàn thành…</string>
+    <string name="step_onboarding">Đang khởi tạo engine…</string>
+    <string name="step_complete">Cài đặt hoàn tất!</string>
+    <string name="step_failed">Cài đặt thất bại</string>
+    <string name="welcome_subtitle">Cổng OpenClaw AI trên điện thoại của bạn</string>
+    <string name="welcome_openrouter_desc">OpenRouter là cổng AI hợp nhất cho phép bạn truy cập các mô hình từ OpenAI, Google, Anthropic và nhiều hơn nữa chỉ với một tài khoản.</string>
+    <string name="welcome_connect_button">Kết nối với OpenRouter trong 3 giây</string>
+    <string name="welcome_free_models">Đăng ký bằng Google · Bỏ qua thanh toán để dùng mô hình miễn phí</string>
+    <string name="welcome_connecting">Đang kết nối…</string>
+    <string name="welcome_error">Kết nối thất bại: %1$s</string>
+    <string name="onboarding_btn_previous">Trước đó</string>
+    <string name="onboarding_btn_next">Tiếp theo</string>
+    <string name="onboarding_btn_done">Hoàn tất</string>
+    <string name="onboarding_btn_skip">Bỏ qua bây giờ</string>
+    <string name="onboarding_provider_title">Chọn Nhà cung cấp AI</string>
+    <string name="onboarding_provider_subtitle">Chọn nhà cung cấp mô hình AI cho OpenClaw</string>
+    <string name="onboarding_provider_anthropic">Sử dụng các mô hình Claude</string>
+    <string name="onboarding_provider_openai">Sử dụng các mô hình GPT</string>
+    <string name="onboarding_provider_google">Sử dụng các mô hình Gemini</string>
+    <string name="onboarding_provider_openrouter">OpenRouter (Cổng thống nhất đa mô hình)</string>
+    <string name="welcome_manual_input">Nhập khóa API thủ công</string>
+    <string name="welcome_manual_collapse">Thu gọn</string>
+    <string name="onboarding_apikey_title">Nhập khóa API</string>
+    <string name="onboarding_get_key">Lấy khóa API OpenRouter</string>
+    <string name="onboarding_apikey_subtitle">Nhập khóa API %1$s của bạn</string>
+    <string name="onboarding_apikey_invalid">Vui lòng nhập khóa API hợp lệ</string>
+    <string name="onboarding_apikey_security">Khóa API của bạn được lưu trữ an toàn trên thiết bị này chỉ.\nNó không bao giờ được gửi đến các máy chủ bên ngoài.</string>
+    <string name="onboarding_channel_title">Tích hợp kênh</string>
+    <string name="onboarding_channel_subtitle">Bạn có thể kết nối các kênh sau khi bắt đầu cổng</string>
+    <string name="onboarding_whatsapp_desc">Ghép nối bằng cách quét mã QR</string>
+    <string name="onboarding_bot_token_desc">Kết nối với mã thông báo bot</string>
+    <string name="onboarding_signal_desc">Kết nối bằng số điện thoại</string>
+    <string name="onboarding_channel_note">Tích hợp kênh cũng có thể được cấu hình trong Cài đặt sau khi bắt đầu cổng</string>
+    <string name="dashboard_cd_settings">Cài đặt</string>
+    <string name="dashboard_status_running">Đang chạy</string>
+    <string name="dashboard_status_starting">Đang khởi động…</string>
+    <string name="dashboard_status_stopping">Đang dừng…</string>
+    <string name="dashboard_status_error">Lỗi</string>
+    <string name="dashboard_status_stopped">Đã dừng</string>
+    <string name="dashboard_btn_start">Bắt đầu</string>
+    <string name="dashboard_apikey_required_title">Cần khóa API</string>
+    <string name="dashboard_apikey_required_message">Vui lòng thiết lập khóa API của bạn trong Cài đặt trước khi bắt đầu cổng.</string>
+    <string name="dashboard_apikey_go_settings">Đi đến Cài đặt</string>
+    <string name="dashboard_apikey_dismiss">Sau</string>
+    <string name="dashboard_btn_stop">Dừng</string>
+    <string name="dashboard_btn_restart">Khởi động lại</string>
+    <string name="dashboard_channels_value">%1$d</string>
+    <string name="dashboard_label_memory">Bộ nhớ</string>
+    <string name="dashboard_memory_value">%1$d MB</string>
+    <string name="dashboard_label_battery">Pin</string>
+    <string name="dashboard_model_label">Mô hình AI</string>
+    <string name="dashboard_log_title">Nhật ký</string>
+    <string name="dashboard_log_empty">Nhật ký sẽ xuất hiện ở đây khi cổng khởi động</string>
+    <string name="settings_title">Cài đặt</string>
+    <string name="settings_cd_back">Quay lại</string>
+    <string name="settings_section_gateway">Cổng</string>
+    <string name="settings_auto_start">Tự động khởi động khi khởi động</string>
+    <string name="settings_auto_start_desc">Tự động bắt đầu cổng khi thiết bị khởi động lại</string>
+    <string name="settings_charge_only">Chạy chỉ khi sạc</string>
+    <string name="settings_charge_only_desc">Giữ cổng hoạt động chỉ khi đang sạc</string>
+    <string name="settings_section_battery">Pin</string>
+    <string name="settings_battery_optimization">Miễn trừ tối ưu hóa pin</string>
+    <string name="settings_battery_exempted">Đã được miễn trừ — hoạt động nền ổn định</string>
+    <string name="settings_battery_not_exempted">Nhấn để cấu hình — cải thiện ổn định nền</string>
+    <string name="settings_cannot_open">Không thể mở cài đặt</string>
+    <string name="settings_section_ai">Mô hình AI</string>
+    <string name="settings_current_provider">Nhà cung cấp hiện tại</string>
+    <string name="settings_change_provider">Thay đổi nhà cung cấp</string>
+    <string name="settings_api_key">Khóa API</string>
+    <string name="settings_api_key_configured">Đã cấu hình</string>
+    <string name="settings_api_key_not_configured">Chưa cấu hình</string>
+    <string name="settings_api_key_hint">Nhập khóa API của bạn</string>
+    <string name="settings_api_key_save">Lưu</string>
+    <string name="settings_api_key_cancel">Hủy</string>
+    
+    <string name="settings_restart_confirm_message">Khởi động lại gateway ngay bây giờ?</string>
+    <string name="settings_restart_confirm_yes">Có</string>
+    <string name="settings_restart_confirm_no">Không</string>
+<string name="settings_select_model">Chọn mô hình</string>
+    <string name="settings_model_default">Mặc định (Auto Select Free)</string>
+    <string name="settings_model_restart_hint">Khởi động lại cổng để áp dụng mô hình mới</string>
+    <string name="settings_model_loading">Đang tải mô hình…</string>
+    <string name="settings_model_load_error">Không thể tải mô hình: %1$s</string>
+    <string name="settings_model_retry">Thử lại</string>
+    <string name="settings_model_none_found">Không tìm thấy mô hình nào hỗ trợ công cụ</string>
+    <string name="settings_model_close">Đóng</string>
+    <string name="settings_model_section_free">Miễn phí</string>
+    <string name="settings_model_free_warning">Mô hình miễn phí có thể chậm hoặc không phản hồi khi nhu cầu cao</string>
+    <string name="settings_model_section_paid">Trả phí</string>
+    <string name="settings_section_about">Về ứng dụng</string>
+    <string name="settings_disclaimer">Ứng dụng này không phải là ứng dụng chính thức của OpenClaw</string>
+
+    <!-- Tools -->
+    <string name="settings_section_tools">Công cụ</string>
+    <string name="settings_brave_search_key">Khóa API Brave Search</string>
+    <string name="settings_brave_search_desc">Kích hoạt tìm kiếm web cho tác nhân AI. Tùy chọn — để trống để tắt.</string>
+    <string name="settings_brave_search_optional">Chưa cấu hình (tùy chọn)</string>
+    <string name="settings_brave_search_get_key">Lấy khóa API Brave Search →</string>
+
+    <!-- Channels -->
+    <string name="settings_section_channels">Kênh</string>
+    <string name="settings_whatsapp_desc">Kết nối bằng quét mã QR</string>
+    <string name="settings_telegram_desc">Kết nối bằng token bot</string>
+    <string name="settings_discord_desc">Kết nối bằng token bot</string>
+    <string name="settings_token_configured">Đã cấu hình</string>
+    <string name="settings_token_not_configured">Chưa cấu hình</string>
+    <string name="settings_bot_token_title">Token bot</string>
+    <string name="settings_bot_token_hint">Nhập token bot</string>
+    <string name="settings_bot_token_help">Tạo bot %1$s →</string>
+    <string name="settings_channels_restart_hint">Khởi động lại gateway để áp dụng thay đổi kênh</string>
+    <string name="dashboard_no_channels">Chưa cấu hình kênh nào</string>
+    <string name="dashboard_whatsapp_qr_title">Mã QR WhatsApp</string>
+    <string name="dashboard_whatsapp_qr_instruction">Mở WhatsApp → Thiết bị đã liên kết → Liên kết thiết bị → Quét mã QR này</string>
+    <string name="dashboard_whatsapp_qr_error">Không thể tạo mã QR</string>
+
+    <!-- Pairing -->
+    <string name="pairing_requests_title">Yêu cầu ghép nối</string>
+    <string name="pairing_approve">Chấp nhận</string>
+    <string name="pairing_deny">Từ chối</string>
+    <string name="pairing_code_label">Mã: %1$s</string>
+
+    <!-- WhatsApp Connect -->
+    <string name="whatsapp_connect_title">WhatsApp</string>
+    <string name="whatsapp_connect_desc">Quét mã QR để kết nối</string>
+    <string name="whatsapp_connect_btn">Kết nối</string>
+    <string name="whatsapp_qr_loading">Đang tạo mã QR…</string>
+    <string name="whatsapp_connected">Đã kết nối!</string>
+    <string name="whatsapp_connect_error">Kết nối thất bại: %1$s</string>
+    <string name="whatsapp_qr_share">Chia sẻ</string>
+
+    <!-- Pairing Notification -->
+    <string name="pairing_notification_channel">Yêu cầu ghép nối</string>
+    <string name="pairing_notification_title">Yêu cầu ghép nối mới</string>
+    <string name="pairing_notification_text">%1$s: %2$s</string>
+    <string name="settings_codex_oauth_title">OpenAI Codex OAuth</string>
+    <string name="settings_codex_oauth_signing_in">Signing in…</string>
+    <string name="settings_channel_whatsapp">WhatsApp</string>
+    <string name="settings_channel_telegram">Telegram</string>
+    <string name="settings_channel_discord">Discord</string>
+    <string name="settings_about_version">andClaw v%1$s</string>
+    <string name="settings_about_powered_by">Powered by OpenClaw</string>
+    <string name="settings_provider_openai_api">%1$s (API)</string>
+    <string name="settings_provider_openai_codex">%1$s (Codex OAuth)</string>
+    <string name="settings_bot_token_dialog_title">%1$s Bot Token</string>
+    <string name="settings_bot_restart_notice_message">The gateway will restart.</string>
+</resources>
+
+
+
+
+
+
+
+
+
+
+
+

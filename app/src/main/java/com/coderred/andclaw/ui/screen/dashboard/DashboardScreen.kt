@@ -1,0 +1,935 @@
+package com.coderred.andclaw.ui.screen.dashboard
+
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.BatteryChargingFull
+import androidx.compose.material.icons.filled.Cable
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.Memory
+import androidx.compose.material.icons.filled.OpenInBrowser
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Psychology
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Stop
+import androidx.compose.material.icons.filled.Timer
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
+import androidx.core.content.ContextCompat
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.coderred.andclaw.R
+import com.coderred.andclaw.data.GatewayStatus
+import com.coderred.andclaw.ui.component.ModelSelectionDialog
+import com.coderred.andclaw.ui.component.SessionLogsDialog
+import com.coderred.andclaw.ui.theme.StatusError
+import com.coderred.andclaw.ui.theme.StatusRunning
+import com.coderred.andclaw.ui.theme.StatusStopped
+import com.coderred.andclaw.ui.theme.StatusWarning
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun DashboardScreen(
+    onNavigateToSettings: () -> Unit,
+    viewModel: DashboardViewModel = viewModel(),
+) {
+    val gatewayState by viewModel.gatewayState.collectAsState()
+    val logLines by viewModel.logLines.collectAsState()
+    val batteryLevel by viewModel.batteryLevel.collectAsState()
+    val isCharging by viewModel.isCharging.collectAsState()
+    val memoryUsageMb by viewModel.memoryUsageMb.collectAsState()
+    val apiProvider by viewModel.apiProvider.collectAsState()
+    val apiKey by viewModel.apiKey.collectAsState()
+    val selectedModel by viewModel.selectedModel.collectAsState()
+    val availableModels by viewModel.availableModels.collectAsState()
+    val isLoadingModels by viewModel.isLoadingModels.collectAsState()
+    val modelLoadError by viewModel.modelLoadError.collectAsState()
+    val pairingRequests by viewModel.pairingRequests.collectAsState()
+    val sessionLogs by viewModel.sessionLogs.collectAsState()
+    val isLoadingSessionLogs by viewModel.isLoadingSessionLogs.collectAsState()
+    val context = LocalContext.current
+
+    var showModelDialog by remember { mutableStateOf(false) }
+    var showApiKeyWarning by remember { mutableStateOf(false) }
+    var showSessionLogs by remember { mutableStateOf(false) }
+    var logsExpanded by rememberSaveable { mutableStateOf(false) }
+
+    // 알림 권한 요청 (Android 13+)
+    val notificationPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { _ ->
+        // 권한 허용/거부 관계없이 게이트웨이 시작 (알림은 선택사항)
+        viewModel.startGateway()
+    }
+
+    val requestStartGateway: () -> Unit = {
+        val apiKeyRequired = apiProvider != "openai-codex"
+        if (apiKeyRequired && apiKey.isBlank()) {
+            showApiKeyWarning = true
+        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS)
+            != PackageManager.PERMISSION_GRANTED
+        ) {
+            notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        } else {
+            viewModel.startGateway()
+        }
+    }
+
+    val logListState = rememberLazyListState()
+
+    LaunchedEffect(logLines.size) {
+        if (logLines.isNotEmpty() && logsExpanded) {
+            logListState.animateScrollToItem(logLines.size - 1)
+        }
+    }
+
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text("andClaw") },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = Color.Transparent,
+                ),
+                actions = {
+                    IconButton(onClick = onNavigateToSettings) {
+                        Icon(
+                            Icons.Default.Settings,
+                            contentDescription = stringResource(R.string.dashboard_cd_settings),
+                        )
+                    }
+                },
+            )
+        },
+    ) { innerPadding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(innerPadding)
+                .verticalScroll(rememberScrollState()),
+        ) {
+            // ── Hero Section — full bleed, colored background ──
+            StatusHero(
+                status = gatewayState.status,
+                errorMessage = gatewayState.errorMessage,
+                uptime = gatewayState.uptime,
+                onStart = requestStartGateway,
+                onStop = { viewModel.stopGateway() },
+                onRestart = { viewModel.restartGateway() },
+                onOpenDashboard = { viewModel.openDashboard(context) },
+                dashboardReady = gatewayState.dashboardReady,
+            )
+
+            // ── Content below hero ──
+            Column(
+                modifier = Modifier.padding(horizontal = 20.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+            ) {
+                Spacer(modifier = Modifier.height(4.dp))
+
+                // ── Model Banner (openrouter) ──
+                if (apiProvider == "openrouter") {
+                    ModelBanner(
+                        selectedModel = selectedModel,
+                        onClick = {
+                            showModelDialog = true
+                            viewModel.fetchModels()
+                        },
+                    )
+                }
+
+                // ── Pairing Requests ──
+                if (pairingRequests.isNotEmpty()) {
+                    PairingRequestsCard(
+                        requests = pairingRequests,
+                        onApprove = { req -> viewModel.approvePairing(req.channel, req.code) },
+                        onDeny = { req -> viewModel.denyPairing(req.channel, req.code) },
+                    )
+                }
+
+                // ── Stats Row ──
+                StatsRow(
+                    uptime = gatewayState.uptime,
+                    memoryMb = memoryUsageMb.toInt(),
+                    batteryLevel = batteryLevel,
+                    isCharging = isCharging,
+                )
+
+                // ── Logs ──
+                LogSection(
+                    logLines = logLines,
+                    expanded = logsExpanded,
+                    onToggle = { logsExpanded = !logsExpanded },
+                    listState = logListState,
+                    onShowSessionLogs = {
+                        showSessionLogs = true
+                        viewModel.loadSessionLogs()
+                    },
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+            }
+        }
+    }
+
+    if (showModelDialog) {
+        ModelSelectionDialog(
+            models = availableModels,
+            selectedModelId = selectedModel,
+            isLoading = isLoadingModels,
+            errorMessage = modelLoadError,
+            onSelectModel = { model ->
+                viewModel.setSelectedModel(model)
+                showModelDialog = false
+            },
+            onDismiss = { showModelDialog = false },
+            onRetry = { viewModel.fetchModels() },
+        )
+    }
+
+    if (showSessionLogs) {
+        SessionLogsDialog(
+            entries = sessionLogs,
+            isLoading = isLoadingSessionLogs,
+            onDismiss = { showSessionLogs = false },
+        )
+    }
+
+    if (showApiKeyWarning) {
+        AlertDialog(
+            onDismissRequest = { showApiKeyWarning = false },
+            shape = RoundedCornerShape(24.dp),
+            title = { Text(stringResource(R.string.dashboard_apikey_required_title)) },
+            text = { Text(stringResource(R.string.dashboard_apikey_required_message)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    showApiKeyWarning = false
+                    onNavigateToSettings()
+                }) {
+                    Text(stringResource(R.string.dashboard_apikey_go_settings))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showApiKeyWarning = false }) {
+                    Text(stringResource(R.string.dashboard_apikey_dismiss))
+                }
+            },
+        )
+    }
+}
+
+// ── Hero Section ──
+
+@Composable
+private fun StatusHero(
+    status: GatewayStatus,
+    errorMessage: String?,
+    uptime: Long,
+    onStart: () -> Unit,
+    onStop: () -> Unit,
+    onRestart: () -> Unit,
+    onOpenDashboard: () -> Unit,
+    dashboardReady: Boolean,
+) {
+    val statusColor by animateColorAsState(
+        targetValue = when (status) {
+            GatewayStatus.RUNNING -> StatusRunning
+            GatewayStatus.STARTING, GatewayStatus.STOPPING -> StatusWarning
+            GatewayStatus.ERROR -> StatusError
+            GatewayStatus.STOPPED -> StatusStopped
+        },
+        label = "statusColor",
+    )
+
+    val infiniteTransition = rememberInfiniteTransition(label = "pulse")
+    val pulseAlpha by infiniteTransition.animateFloat(
+        initialValue = 1f,
+        targetValue = 0.4f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1000),
+            repeatMode = RepeatMode.Reverse,
+        ),
+        label = "pulseAlpha",
+    )
+
+    val dotAlpha = when (status) {
+        GatewayStatus.STARTING, GatewayStatus.STOPPING -> pulseAlpha
+        else -> 1f
+    }
+
+    // Full-width gradient hero
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(
+                Brush.verticalGradient(
+                    colors = listOf(
+                        statusColor.copy(alpha = 0.08f),
+                        Color.Transparent,
+                    ),
+                ),
+            ),
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp, vertical = 24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            // Big status dot
+            Box(
+                modifier = Modifier
+                    .size(64.dp)
+                    .alpha(dotAlpha)
+                    .clip(CircleShape)
+                    .background(
+                        Brush.radialGradient(
+                            colors = listOf(
+                                statusColor,
+                                statusColor.copy(alpha = 0.3f),
+                            ),
+                        ),
+                    ),
+                contentAlignment = Alignment.Center,
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(28.dp)
+                        .clip(CircleShape)
+                        .background(statusColor),
+                )
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Status text — big and centered
+            Text(
+                text = when (status) {
+                    GatewayStatus.RUNNING -> stringResource(R.string.dashboard_status_running)
+                    GatewayStatus.STARTING -> stringResource(R.string.dashboard_status_starting)
+                    GatewayStatus.STOPPING -> stringResource(R.string.dashboard_status_stopping)
+                    GatewayStatus.ERROR -> stringResource(R.string.dashboard_status_error)
+                    GatewayStatus.STOPPED -> stringResource(R.string.dashboard_status_stopped)
+                },
+                style = MaterialTheme.typography.headlineLarge,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+
+            if (status == GatewayStatus.RUNNING && uptime > 0) {
+                Text(
+                    text = formatUptime(uptime),
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+
+            // Error chip
+            if (errorMessage != null) {
+                Spacer(modifier = Modifier.height(8.dp))
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = MaterialTheme.colorScheme.errorContainer,
+                ) {
+                    Text(
+                        text = errorMessage,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onErrorContainer,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(20.dp))
+
+            // Action buttons — full width, stacked
+            when (status) {
+                GatewayStatus.STOPPED, GatewayStatus.ERROR -> {
+                    Button(
+                        onClick = onStart,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(56.dp),
+                        shape = RoundedCornerShape(16.dp),
+                    ) {
+                        Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(22.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            stringResource(R.string.dashboard_btn_start),
+                            style = MaterialTheme.typography.titleMedium,
+                        )
+                    }
+                }
+                GatewayStatus.RUNNING -> {
+                    Button(
+                        onClick = onOpenDashboard,
+                        enabled = dashboardReady,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(56.dp),
+                        shape = RoundedCornerShape(16.dp),
+                    ) {
+                        Icon(Icons.Default.OpenInBrowser, contentDescription = null, modifier = Modifier.size(22.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            "Dashboard",
+                            style = MaterialTheme.typography.titleMedium,
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        FilledTonalButton(
+                            onClick = onStop,
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(48.dp),
+                            shape = RoundedCornerShape(12.dp),
+                        ) {
+                            Icon(Icons.Default.Stop, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(stringResource(R.string.dashboard_btn_stop))
+                        }
+                        OutlinedButton(
+                            onClick = onRestart,
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(48.dp),
+                            shape = RoundedCornerShape(12.dp),
+                        ) {
+                            Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(stringResource(R.string.dashboard_btn_restart))
+                        }
+                    }
+                }
+                GatewayStatus.STARTING -> {
+                    OutlinedButton(
+                        onClick = onStop,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(48.dp),
+                        shape = RoundedCornerShape(12.dp),
+                    ) {
+                        Icon(Icons.Default.Stop, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(stringResource(R.string.dashboard_btn_stop))
+                    }
+                }
+                else -> { /* Stopping — no buttons */ }
+            }
+        }
+    }
+}
+
+// ── Model Banner ──
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ModelBanner(
+    selectedModel: String,
+    onClick: () -> Unit,
+) {
+    Card(
+        onClick = onClick,
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.secondaryContainer,
+        ),
+    ) {
+        Row(
+            modifier = Modifier.padding(20.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Surface(
+                shape = RoundedCornerShape(14.dp),
+                color = MaterialTheme.colorScheme.secondary,
+                modifier = Modifier.size(48.dp),
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        Icons.Default.Psychology,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSecondary,
+                        modifier = Modifier.size(26.dp),
+                    )
+                }
+            }
+            Spacer(modifier = Modifier.width(16.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = stringResource(R.string.dashboard_model_label),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.7f),
+                )
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = if (selectedModel.isNotBlank()) {
+                        selectedModel
+                            .removePrefix("openrouter/")
+                            .removeSuffix(":free")
+                    } else {
+                        stringResource(R.string.settings_model_default)
+                    },
+                    style = MaterialTheme.typography.titleMedium.copy(
+                        fontWeight = FontWeight.SemiBold,
+                    ),
+                    color = MaterialTheme.colorScheme.onSecondaryContainer,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            Icon(
+                Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.5f),
+                modifier = Modifier.size(24.dp),
+            )
+        }
+    }
+}
+
+// ── Stats Row ──
+
+@Composable
+private fun StatsRow(
+    uptime: Long,
+    memoryMb: Int,
+    batteryLevel: Int,
+    isCharging: Boolean,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        // Header
+        Text(
+            text = "Status",
+            style = MaterialTheme.typography.titleSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(bottom = 8.dp),
+        )
+
+        // Stats as horizontal items inside a card
+        Surface(
+            shape = RoundedCornerShape(20.dp),
+            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+        ) {
+            Column {
+                StatItem(
+                    icon = Icons.Default.Timer,
+                    iconTint = MaterialTheme.colorScheme.primary,
+                    label = "Uptime",
+                    value = formatUptime(uptime),
+                )
+                StatItem(
+                    icon = Icons.Default.Memory,
+                    iconTint = MaterialTheme.colorScheme.secondary,
+                    label = stringResource(R.string.dashboard_label_memory),
+                    value = stringResource(R.string.dashboard_memory_value, memoryMb),
+                )
+                StatItem(
+                    icon = Icons.Default.BatteryChargingFull,
+                    iconTint = if (isCharging) StatusRunning else MaterialTheme.colorScheme.onSurfaceVariant,
+                    label = stringResource(R.string.dashboard_label_battery),
+                    value = "${batteryLevel}%${if (isCharging) " ⚡" else ""}",
+                    isLast = true,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun StatItem(
+    icon: ImageVector,
+    iconTint: Color,
+    label: String,
+    value: String,
+    isLast: Boolean = false,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 20.dp, vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Surface(
+            shape = CircleShape,
+            color = iconTint.copy(alpha = 0.12f),
+            modifier = Modifier.size(36.dp),
+        ) {
+            Box(contentAlignment = Alignment.Center) {
+                Icon(
+                    icon,
+                    contentDescription = null,
+                    tint = iconTint,
+                    modifier = Modifier.size(18.dp),
+                )
+            }
+        }
+        Spacer(modifier = Modifier.width(16.dp))
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.weight(1f),
+        )
+        Text(
+            text = value,
+            style = MaterialTheme.typography.titleMedium.copy(
+                fontWeight = FontWeight.SemiBold,
+            ),
+            color = MaterialTheme.colorScheme.onSurface,
+        )
+    }
+    if (!isLast) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp)
+                .height(0.5.dp)
+                .background(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
+        )
+    }
+}
+
+// ── Log Section ──
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun LogSection(
+    logLines: List<String>,
+    expanded: Boolean,
+    onToggle: () -> Unit,
+    listState: androidx.compose.foundation.lazy.LazyListState,
+    onShowSessionLogs: () -> Unit,
+) {
+    Card(
+        onClick = onToggle,
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+        ),
+    ) {
+        Column {
+            // Header
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp, vertical = 16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = stringResource(R.string.dashboard_log_title),
+                    style = MaterialTheme.typography.titleSmall,
+                    modifier = Modifier.weight(1f),
+                )
+                if (logLines.isNotEmpty()) {
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
+                    ) {
+                        Text(
+                            text = "${logLines.size}",
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                fontWeight = FontWeight.Bold,
+                            ),
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 3.dp),
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(4.dp))
+                }
+                IconButton(
+                    onClick = onShowSessionLogs,
+                    modifier = Modifier.size(32.dp),
+                ) {
+                    Icon(
+                        Icons.Default.History,
+                        contentDescription = "Session Logs",
+                        modifier = Modifier.size(18.dp),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Spacer(modifier = Modifier.width(4.dp))
+                Icon(
+                    if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                    contentDescription = null,
+                    modifier = Modifier.size(20.dp),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+
+            // Collapsed: last 2 lines preview
+            if (!expanded && logLines.isNotEmpty()) {
+                Column(
+                    modifier = Modifier.padding(start = 20.dp, end = 20.dp, bottom = 16.dp),
+                    verticalArrangement = Arrangement.spacedBy(2.dp),
+                ) {
+                    logLines.takeLast(2).forEach { line ->
+                        Text(
+                            text = line,
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                fontFamily = FontFamily.Monospace,
+                                fontSize = 10.sp,
+                                lineHeight = 14.sp,
+                            ),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                }
+            }
+
+            // Expanded: full log
+            AnimatedVisibility(
+                visible = expanded,
+                enter = expandVertically(),
+                exit = shrinkVertically(),
+            ) {
+                if (logLines.isEmpty()) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(80.dp)
+                            .padding(20.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            text = stringResource(R.string.dashboard_log_empty),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                } else {
+                    Surface(
+                        modifier = Modifier
+                            .padding(start = 12.dp, end = 12.dp, bottom = 12.dp),
+                        shape = RoundedCornerShape(12.dp),
+                        color = MaterialTheme.colorScheme.surface,
+                    ) {
+                        LazyColumn(
+                            state = listState,
+                            modifier = Modifier
+                                .height(220.dp)
+                                .padding(12.dp),
+                            verticalArrangement = Arrangement.spacedBy(1.dp),
+                        ) {
+                            items(logLines) { line ->
+                                Text(
+                                    text = line,
+                                    style = MaterialTheme.typography.labelSmall.copy(
+                                        fontFamily = FontFamily.Monospace,
+                                        fontSize = 11.sp,
+                                        lineHeight = 16.sp,
+                                    ),
+                                    color = when {
+                                        line.contains("error", ignoreCase = true) -> StatusError
+                                        line.contains("[andClaw]") -> MaterialTheme.colorScheme.primary
+                                        else -> MaterialTheme.colorScheme.onSurfaceVariant
+                                    },
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+private fun formatUptime(seconds: Long): String {
+    if (seconds <= 0) return "00:00"
+    val hours = seconds / 3600
+    val minutes = (seconds % 3600) / 60
+    val secs = seconds % 60
+    return if (hours > 0) {
+        String.format("%d:%02d:%02d", hours, minutes, secs)
+    } else {
+        String.format("%02d:%02d", minutes, secs)
+    }
+}
+
+// ── Pairing Requests Card ──
+
+@Composable
+private fun PairingRequestsCard(
+    requests: List<com.coderred.andclaw.data.PairingRequest>,
+    onApprove: (com.coderred.andclaw.data.PairingRequest) -> Unit,
+    onDeny: (com.coderred.andclaw.data.PairingRequest) -> Unit,
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.3f),
+        ),
+        shape = RoundedCornerShape(16.dp),
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Icon(
+                    Icons.Default.Cable,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.size(20.dp),
+                )
+                Text(
+                    text = stringResource(R.string.pairing_requests_title),
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                )
+            }
+
+            requests.forEach { request ->
+                PairingRequestItem(
+                    request = request,
+                    onApprove = { onApprove(request) },
+                    onDeny = { onDeny(request) },
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun PairingRequestItem(
+    request: com.coderred.andclaw.data.PairingRequest,
+    onApprove: () -> Unit,
+    onDeny: () -> Unit,
+) {
+    Surface(
+        shape = RoundedCornerShape(12.dp),
+        color = MaterialTheme.colorScheme.surface,
+        tonalElevation = 1.dp,
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = request.channel.replaceFirstChar { it.uppercase() },
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+                Text(
+                    text = if (request.username.isNotBlank()) request.username else request.code,
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.Medium,
+                )
+                if (request.username.isNotBlank()) {
+                    Text(
+                        text = stringResource(R.string.pairing_code_label, request.code),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontFamily = FontFamily.Monospace,
+                    )
+                }
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(
+                    onClick = onDeny,
+                    contentPadding = ButtonDefaults.ButtonWithIconContentPadding,
+                ) {
+                    Text(
+                        stringResource(R.string.pairing_deny),
+                        style = MaterialTheme.typography.labelMedium,
+                    )
+                }
+                Button(
+                    onClick = onApprove,
+                    contentPadding = ButtonDefaults.ButtonWithIconContentPadding,
+                ) {
+                    Text(
+                        stringResource(R.string.pairing_approve),
+                        style = MaterialTheme.typography.labelMedium,
+                    )
+                }
+            }
+        }
+    }
+}
+
