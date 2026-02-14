@@ -159,7 +159,10 @@ class ProcessManager(
                             "openai" -> put("OPENAI_API_KEY", apiKey)
                             "openai-codex" -> { /* OAuth provider: no API key env needed */ }
                             "openrouter" -> put("OPENROUTER_API_KEY", apiKey)
-                            "google" -> put("GOOGLE_API_KEY", apiKey)
+                            "google" -> {
+                                put("GEMINI_API_KEY", apiKey)
+                                put("GOOGLE_API_KEY", apiKey)
+                            }
                             else -> put("OPENROUTER_API_KEY", apiKey) // 기본
                         }
                     }
@@ -442,7 +445,7 @@ class ProcessManager(
                     "openai" -> {
                         val id = when {
                             selectedModel.startsWith("openai/") -> selectedModel.removePrefix("openai/")
-                            selectedModel.contains("/") -> "gpt-4o"
+                            selectedModel.contains("/") -> "gpt-5-mini"
                             else -> selectedModel
                         }
                         "openai/$id"
@@ -469,7 +472,7 @@ class ProcessManager(
                 when (apiProvider) {
                     "openrouter" -> "openrouter/openrouter/free"
                     "anthropic" -> "anthropic/claude-sonnet-4-5"
-                    "openai" -> "openai/gpt-4o"
+                    "openai" -> "openai/gpt-5-mini"
                     "openai-codex" -> "openai-codex/gpt-5.3-codex"
                     "google" -> "google/gemini-2.5-flash"
                     else -> "openrouter/openrouter/free"

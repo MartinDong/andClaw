@@ -120,7 +120,7 @@ class PreferencesManager(private val context: Context) {
             when (provider) {
                 "openrouter" -> it[KEY_API_KEY_OPENROUTER] = key
                 "anthropic" -> it[KEY_API_KEY_ANTHROPIC] = key
-                "openai" -> it[KEY_API_KEY_OPENAI] = key
+                "openai", "openai-codex" -> it[KEY_API_KEY_OPENAI] = key
                 "google" -> it[KEY_API_KEY_GOOGLE] = key
                 else -> { /* no-op */ }
             }

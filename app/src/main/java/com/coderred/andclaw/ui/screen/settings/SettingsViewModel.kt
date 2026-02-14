@@ -155,7 +155,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
             val defaultModelId = when (provider) {
                 "openrouter" -> "openrouter/free"
                 "anthropic" -> "claude-sonnet-4-5"
-                "openai" -> "gpt-4o"
+                "openai" -> "gpt-5-mini"
                 "openai-codex" -> "gpt-5.3-codex"
                 "google" -> "gemini-2.5-flash"
                 else -> ""
@@ -174,7 +174,11 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     }
 
     fun setApiKey(key: String) {
-        viewModelScope.launch { prefs.setApiKey(key) }
+        viewModelScope.launch(Dispatchers.IO) {
+            prefs.setApiKey(key)
+            val provider = prefs.apiProvider.first()
+            syncApiKeyAuthProfile(provider = provider, apiKey = key)
+        }
     }
 
     fun setSelectedModel(model: com.coderred.andclaw.data.OpenRouterModel) {
@@ -196,7 +200,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     fun setGptSubscription(useCodexOAuth: Boolean) {
         viewModelScope.launch(Dispatchers.IO) {
             val provider = if (useCodexOAuth) "openai-codex" else "openai"
-            val modelId = if (useCodexOAuth) "gpt-5.3-codex" else "gpt-4o"
+            val modelId = if (useCodexOAuth) "gpt-5.3-codex" else "gpt-5-mini"
 
             prefs.setApiProvider(provider)
             prefs.setSelectedModelId(modelId)
@@ -208,6 +212,9 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
 
             if (useCodexOAuth) {
                 _isCodexAuthenticated.value = detectCodexAuth()
+            } else {
+                val openAiApiKey = prefs.apiKey.first()
+                syncApiKeyAuthProfile(provider = "openai", apiKey = openAiApiKey)
             }
         }
     }
@@ -718,6 +725,58 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         lastGood.put("openai", "openai:default")
 
         authFile.writeText(root.toString(2))
+    }
+
+    private fun syncApiKeyAuthProfile(provider: String, apiKey: String) {
+        val normalizedProvider = when (provider.lowercase()) {
+            "openai-codex" -> "openai"
+            else -> provider.lowercase()
+        }
+        if (normalizedProvider !in setOf("google", "openai", "anthropic", "openrouter")) return
+
+        runCatching {
+            val profileId = "$normalizedProvider:default"
+            val authFile = File(prootManager.rootfsDir, "root/.openclaw/agents/main/agent/auth-profiles.json")
+            authFile.parentFile?.mkdirs()
+
+            val root = if (authFile.exists()) {
+                runCatching { JSONObject(authFile.readText()) }.getOrElse { JSONObject() }
+            } else {
+                JSONObject()
+            }
+
+            if (!root.has("version")) {
+                root.put("version", 1)
+            }
+
+            val profiles = root.optJSONObject("profiles") ?: JSONObject().also { root.put("profiles", it) }
+
+            if (apiKey.isBlank()) {
+                profiles.remove(profileId)
+                root.optJSONObject("lastGood")?.let { lastGood ->
+                    if (lastGood.optString(normalizedProvider) == profileId) {
+                        lastGood.remove(normalizedProvider)
+                    }
+                    if (lastGood.length() == 0) {
+                        root.remove("lastGood")
+                    }
+                }
+            } else {
+                val apiKeyCredential = JSONObject().apply {
+                    put("type", "api_key")
+                    put("provider", normalizedProvider)
+                    put("key", apiKey)
+                }
+                profiles.put(profileId, apiKeyCredential)
+
+                val lastGood = root.optJSONObject("lastGood") ?: JSONObject().also { root.put("lastGood", it) }
+                lastGood.put(normalizedProvider, profileId)
+            }
+
+            authFile.writeText(root.toString(2))
+        }.onFailure { throwable ->
+            Log.w(TAG, "Failed to sync auth profile for provider $normalizedProvider", throwable)
+        }
     }
 
     private fun ensureCodexPrimaryModel() {
