@@ -25,7 +25,6 @@
     <application
         android:name=".AndClawApp"
         android:allowBackup="true"
-        android:extractNativeLibs="true"
         android:usesCleartextTraffic="true"
         android:fullBackupContent="@xml/backup_rules"
         android:dataExtractionRules="@xml/data_extraction_rules"

@@ -42,6 +42,105 @@ ROOTFS_URL="https://cdimage.ubuntu.com/ubuntu-base/releases/24.04/release/ubuntu
 NODEJS_VERSION="v22.12.0"
 NODEJS_URL="https://nodejs.org/dist/$NODEJS_VERSION/node-$NODEJS_VERSION-linux-arm64.tar.gz"
 PLAYWRIGHT_VERSION="1.49.1"
+TERMUX_PROOT_COMMIT="${TERMUX_PROOT_COMMIT:-4dba3afbf3a63af89b4d9c1a59bf2bda10f4d10f}"
+CUSTOM_LOADER32_SCRIPT="$SCRIPT_DIR/build-proot-loader32-16kb.sh"
+
+require_readelf() {
+    if ! command -v readelf >/dev/null 2>&1; then
+        echo "ERROR: readelf가 필요합니다 (binutils 설치 필요)"
+        exit 1
+    fi
+}
+
+is_elf_16kb_compatible() {
+    local elf_path="$1"
+    local aligns
+
+    if [ ! -f "$elf_path" ]; then
+        return 1
+    fi
+
+    aligns=$(readelf -W -l "$elf_path" | awk '/^[[:space:]]*LOAD[[:space:]]/ { print $NF }')
+    if [ -z "$aligns" ]; then
+        return 1
+    fi
+
+    while read -r align; do
+        if [ "$align" != "0x4000" ]; then
+            return 1
+        fi
+    done <<< "$aligns"
+
+    return 0
+}
+
+verify_jnilib_16kb() {
+    local libs=(
+        "libproot.so"
+        "libtalloc.so"
+        "libproot-loader.so"
+    )
+    local loader32="$JNILIBS_DIR/libproot-loader32.so"
+    local failed=0
+
+    echo "   jniLibs 16KB 정렬 검증 중..."
+
+    for lib in "${libs[@]}"; do
+        local path="$JNILIBS_DIR/$lib"
+        if [ ! -f "$path" ]; then
+            echo "   ERROR: $lib 파일이 없습니다"
+            failed=1
+            continue
+        fi
+        if is_elf_16kb_compatible "$path"; then
+            echo "   OK: $lib (16KB)"
+        else
+            echo "   ERROR: $lib 는 16KB 정렬이 아닙니다"
+            failed=1
+        fi
+    done
+
+    if [ -f "$loader32" ]; then
+        if is_elf_16kb_compatible "$loader32"; then
+            echo "   OK: libproot-loader32.so (16KB)"
+        else
+            echo "   ERROR: libproot-loader32.so 는 16KB 정렬이 아닙니다"
+            failed=1
+        fi
+    else
+        echo "   WARNING: libproot-loader32.so 없음"
+    fi
+
+    if [ "$failed" -ne 0 ]; then
+        echo "ERROR: 16KB 정렬 검증 실패"
+        exit 1
+    fi
+}
+
+ensure_loader32_16kb() {
+    local loader32="$JNILIBS_DIR/libproot-loader32.so"
+
+    if [ ! -f "$loader32" ]; then
+        echo "   libproot-loader32.so가 없어 소스 빌드를 시도합니다"
+    elif is_elf_16kb_compatible "$loader32"; then
+        echo "   libproot-loader32.so 이미 16KB 호환"
+        return
+    else
+        echo "   libproot-loader32.so가 4KB 정렬이라 소스 빌드로 교체합니다"
+    fi
+
+    if [ ! -x "$CUSTOM_LOADER32_SCRIPT" ]; then
+        echo "ERROR: $CUSTOM_LOADER32_SCRIPT 실행 권한 또는 파일이 없습니다"
+        exit 1
+    fi
+
+    "$CUSTOM_LOADER32_SCRIPT" "$loader32" "$TERMUX_PROOT_COMMIT"
+
+    if ! is_elf_16kb_compatible "$loader32"; then
+        echo "ERROR: 소스 빌드 후에도 libproot-loader32.so 16KB 검증 실패"
+        exit 1
+    fi
+}
 
 echo "============================================"
 echo "  andClaw - 빌드 준비 (proot + assets)"
@@ -140,6 +239,10 @@ else
     echo "   proot 바이너리 설정 완료"
     ls -lh "$JNILIBS_DIR/"
 fi
+
+require_readelf
+ensure_loader32_16kb
+verify_jnilib_16kb
 
 # ══════════════════════════════════════════════
 #  Part 2: assets 번들
