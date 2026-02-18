@@ -182,14 +182,31 @@
     <string name="settings_about_powered_by">Powered by OpenClaw</string>
     <string name="settings_provider_openai_api">%1$s (API)</string>
     <string name="settings_provider_openai_codex">%1$s (Codex OAuth)</string>
+    <string name="settings_api_type">API Türü</string>
     <string name="settings_bot_token_dialog_title">%1$s Bot Token</string>
     <string name="settings_bot_restart_notice_message">The gateway will restart.</string>
+
+    <string name="bug_report_title">Hata raporu ZIP\'i oluştur</string>
+    <string name="bug_report_last_file">Son dosya: %1$s (%2$s)</string>
+    <string name="bug_report_consent_required">Onay + önizleme gerekli</string>
+    <string name="bug_report_send_chooser_title">Hata raporu ZIP\'ini gönder</string>
+    <string name="bug_report_no_email_app">Bu hata raporunu göndermek için e-posta uygulaması yok.</string>
+    <string name="bug_report_included">Dahil:</string>
+    <string name="bug_report_included_session_errors">- Yalnızca oturum hataları (%1$d kayıt)</string>
+    <string name="bug_report_included_gateway_process">- Ağ geçidi/proses hata dizeleri: %1$s</string>
+    <string name="bug_report_included_app_device_metadata">- Uygulama/cihaz meta verileri</string>
+    <string name="bug_report_excluded">Hariç:</string>
+    <string name="bug_report_excluded_conversation">- Konuşma metni/içeriği YOK</string>
+    <string name="bug_report_excluded_content_preview">- contentPreview YOK</string>
+    <string name="bug_report_consent_checkbox">Bu ZIP\'in oluşturulmasını anlıyorum ve onaylıyorum.</string>
+    <string name="bug_report_generating">ZIP oluşturuluyor...</string>
+    <string name="bug_report_generated">Oluşturuldu: %1$s (%2$s)</string>
+    <string name="bug_report_send_email">E-posta gönder</string>
+    <string name="bug_report_generate_action">ZIP oluştur</string>
+    <string name="bug_report_close">Kapat</string>
+    <string name="bug_report_presence_present">var</string>
+    <string name="bug_report_presence_none">yok</string>
 </resources>
-
-
-
-
-
 
 
 

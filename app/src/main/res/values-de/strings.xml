@@ -188,12 +188,31 @@
     <string name="settings_about_powered_by">Powered by OpenClaw</string>
     <string name="settings_provider_openai_api">%1$s (API)</string>
     <string name="settings_provider_openai_codex">%1$s (Codex OAuth)</string>
+    <string name="settings_api_type">API-Typ</string>
     <string name="settings_bot_token_dialog_title">%1$s Bot Token</string>
     <string name="settings_bot_restart_notice_message">The gateway will restart.</string>
+
+    <string name="bug_report_title">Bugreport-ZIP erstellen</string>
+    <string name="bug_report_last_file">Letzte Datei: %1$s (%2$s)</string>
+    <string name="bug_report_consent_required">Einwilligung + Vorschau erforderlich</string>
+    <string name="bug_report_send_chooser_title">Bugreport-ZIP senden</string>
+    <string name="bug_report_no_email_app">Keine E-Mail-App verfügbar, um diesen Bugreport zu senden.</string>
+    <string name="bug_report_included">Enthalten:</string>
+    <string name="bug_report_included_session_errors">- Nur Sitzungsfehler (%1$d Einträge)</string>
+    <string name="bug_report_included_gateway_process">- Gateway-/Prozess-Fehlerstrings: %1$s</string>
+    <string name="bug_report_included_app_device_metadata">- App-/Gerätemetadaten</string>
+    <string name="bug_report_excluded">Ausgeschlossen:</string>
+    <string name="bug_report_excluded_conversation">- KEIN Konversationstext/-inhalt</string>
+    <string name="bug_report_excluded_content_preview">- KEIN contentPreview</string>
+    <string name="bug_report_consent_checkbox">Ich verstehe das und willige ein, dieses ZIP zu erstellen.</string>
+    <string name="bug_report_generating">ZIP wird erstellt...</string>
+    <string name="bug_report_generated">Erstellt: %1$s (%2$s)</string>
+    <string name="bug_report_send_email">E-Mail senden</string>
+    <string name="bug_report_generate_action">ZIP erstellen</string>
+    <string name="bug_report_close">Schließen</string>
+    <string name="bug_report_presence_present">vorhanden</string>
+    <string name="bug_report_presence_none">keine</string>
 </resources>
-
-
-
 
 
 

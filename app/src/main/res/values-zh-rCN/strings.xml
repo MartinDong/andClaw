@@ -183,11 +183,31 @@
     <string name="settings_about_powered_by">Powered by OpenClaw</string>
     <string name="settings_provider_openai_api">%1$s (API)</string>
     <string name="settings_provider_openai_codex">%1$s (Codex OAuth)</string>
+    <string name="settings_api_type">API 类型</string>
     <string name="settings_bot_token_dialog_title">%1$s Bot Token</string>
     <string name="settings_bot_restart_notice_message">The gateway will restart.</string>
+
+    <string name="bug_report_title">生成问题报告 ZIP</string>
+    <string name="bug_report_last_file">最后的文件: %1$s (%2$s)</string>
+    <string name="bug_report_consent_required">需要同意 + 预览</string>
+    <string name="bug_report_send_chooser_title">发送问题报告 ZIP</string>
+    <string name="bug_report_no_email_app">没有可用于发送此报告的邮件应用。</string>
+    <string name="bug_report_included">包含:</string>
+    <string name="bug_report_included_session_errors">- 仅会话错误 (%1$d 条)</string>
+    <string name="bug_report_included_gateway_process">- 网关/进程错误字符串: %1$s</string>
+    <string name="bug_report_included_app_device_metadata">- 应用/设备元数据</string>
+    <string name="bug_report_excluded">不包含:</string>
+    <string name="bug_report_excluded_conversation">- 不包含对话文本/内容</string>
+    <string name="bug_report_excluded_content_preview">- 不包含 contentPreview</string>
+    <string name="bug_report_consent_checkbox">我已理解并同意生成此 ZIP。</string>
+    <string name="bug_report_generating">正在生成 ZIP...</string>
+    <string name="bug_report_generated">已生成: %1$s (%2$s)</string>
+    <string name="bug_report_send_email">发送邮件</string>
+    <string name="bug_report_generate_action">生成 ZIP</string>
+    <string name="bug_report_close">关闭</string>
+    <string name="bug_report_presence_present">有</string>
+    <string name="bug_report_presence_none">无</string>
 </resources>
-
-
 
 
 

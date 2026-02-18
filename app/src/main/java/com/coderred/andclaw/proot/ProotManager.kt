@@ -34,6 +34,7 @@ class ProotManager(private val context: Context) {
         const val SYSTEM_TOOLS_ASSET = "system-tools-arm64.tar.gz.bin"
         const val OPENCLAW_ASSET_DIR = "openclaw"
         const val PLAYWRIGHT_ASSET = "playwright-chromium-arm64.tar.gz.bin"
+        private const val PLAYWRIGHT_CHROME_MARKER = ".playwright_chrome_path"
     }
 
     // ── 경로 ──
@@ -64,6 +65,12 @@ class ProotManager(private val context: Context) {
     val cacheDir: File
         get() = context.cacheDir
 
+    private val playwrightCacheDir: File
+        get() = File(rootfsDir, "root/.cache/ms-playwright")
+
+    private val playwrightChromeMarkerFile: File
+        get() = File(rootfsDir, PLAYWRIGHT_CHROME_MARKER)
+
     val homeDir: File
         get() = File(rootfsDir, "root")
 
@@ -89,12 +96,81 @@ class ProotManager(private val context: Context) {
         get() = File(rootfsDir, "usr/local/lib/node_modules/openclaw").exists()
 
     val isChromiumInstalled: Boolean
-        get() = File(rootfsDir, "root/.cache/ms-playwright").let { dir ->
-            dir.exists() && dir.walkTopDown().any { it.name == "chrome" && it.canExecute() }
+        get() {
+            val markerPath = readChromiumMarkerPath()
+            if (markerPath != null) {
+                val markerBinary = File(markerPath)
+                if (markerBinary.exists() && markerBinary.canExecute()) {
+                    return true
+                }
+            }
+
+            val detectedPath = detectChromiumExecutablePath()
+            if (detectedPath != null) {
+                writeChromiumMarkerPath(detectedPath)
+                return true
+            }
+
+            clearChromiumMarkerPath()
+            return false
         }
 
     val isFullySetup: Boolean
         get() = isProotAvailable && isRootfsInstalled && isNodeInstalled && isOpenClawInstalled
+
+    fun refreshChromiumExecutableMarker(): Boolean {
+        val detectedPath = detectChromiumExecutablePath() ?: run {
+            clearChromiumMarkerPath()
+            return false
+        }
+
+        writeChromiumMarkerPath(detectedPath)
+        return true
+    }
+
+    private fun detectChromiumExecutablePath(): String? {
+        val browserRoot = playwrightCacheDir
+        val browserDirs = browserRoot.listFiles()
+            ?.filter { it.isDirectory && it.name.startsWith("chromium") }
+            ?.sortedWith(
+                compareByDescending<File> { it.name.startsWith("chromium_headless_shell") }
+                    .thenByDescending { it.name },
+            )
+            ?: return null
+
+        for (browserDir in browserDirs) {
+            val headlessShell = File(browserDir, "chrome-linux/headless_shell")
+            if (headlessShell.exists() && headlessShell.canExecute()) {
+                return headlessShell.absolutePath
+            }
+
+            val chrome = File(browserDir, "chrome-linux/chrome")
+            if (chrome.exists() && chrome.canExecute()) {
+                return chrome.absolutePath
+            }
+        }
+
+        return null
+    }
+
+    private fun readChromiumMarkerPath(): String? {
+        return runCatching {
+            if (!playwrightChromeMarkerFile.exists()) return null
+            playwrightChromeMarkerFile.readText().trim().takeIf { it.isNotBlank() }
+        }.getOrNull()
+    }
+
+    private fun writeChromiumMarkerPath(path: String) {
+        runCatching {
+            playwrightChromeMarkerFile.writeText(path)
+        }
+    }
+
+    private fun clearChromiumMarkerPath() {
+        if (playwrightChromeMarkerFile.exists()) {
+            playwrightChromeMarkerFile.delete()
+        }
+    }
 
     // ── 바이너리 준비 ──
 

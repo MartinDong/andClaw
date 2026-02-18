@@ -183,11 +183,31 @@
     <string name="settings_about_powered_by">Powered by OpenClaw</string>
     <string name="settings_provider_openai_api">%1$s (API)</string>
     <string name="settings_provider_openai_codex">%1$s (Codex OAuth)</string>
+    <string name="settings_api_type">Tipo API</string>
     <string name="settings_bot_token_dialog_title">%1$s Bot Token</string>
     <string name="settings_bot_restart_notice_message">The gateway will restart.</string>
+
+    <string name="bug_report_title">Genera ZIP segnalazione bug</string>
+    <string name="bug_report_last_file">Ultimo file: %1$s (%2$s)</string>
+    <string name="bug_report_consent_required">Consenso + anteprima richiesti</string>
+    <string name="bug_report_send_chooser_title">Invia ZIP segnalazione bug</string>
+    <string name="bug_report_no_email_app">Nessuna app email disponibile per inviare questa segnalazione.</string>
+    <string name="bug_report_included">Incluso:</string>
+    <string name="bug_report_included_session_errors">- Solo errori di sessione (%1$d voci)</string>
+    <string name="bug_report_included_gateway_process">- Stringhe di errore gateway/processo: %1$s</string>
+    <string name="bug_report_included_app_device_metadata">- Metadati app/dispositivo</string>
+    <string name="bug_report_excluded">Escluso:</string>
+    <string name="bug_report_excluded_conversation">- NESSUN testo/contenuto della conversazione</string>
+    <string name="bug_report_excluded_content_preview">- NESSUN contentPreview</string>
+    <string name="bug_report_consent_checkbox">Ho capito e acconsento a generare questo ZIP.</string>
+    <string name="bug_report_generating">Generazione ZIP...</string>
+    <string name="bug_report_generated">Generato: %1$s (%2$s)</string>
+    <string name="bug_report_send_email">Invia email</string>
+    <string name="bug_report_generate_action">Genera ZIP</string>
+    <string name="bug_report_close">Chiudi</string>
+    <string name="bug_report_presence_present">presente</string>
+    <string name="bug_report_presence_none">nessuno</string>
 </resources>
-
-
 
 
 

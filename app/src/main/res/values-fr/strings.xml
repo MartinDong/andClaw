@@ -183,11 +183,31 @@
     <string name="settings_about_powered_by">Powered by OpenClaw</string>
     <string name="settings_provider_openai_api">%1$s (API)</string>
     <string name="settings_provider_openai_codex">%1$s (Codex OAuth)</string>
+    <string name="settings_api_type">Type d\'API</string>
     <string name="settings_bot_token_dialog_title">%1$s Bot Token</string>
     <string name="settings_bot_restart_notice_message">The gateway will restart.</string>
+
+    <string name="bug_report_title">Générer un ZIP de rapport de bug</string>
+    <string name="bug_report_last_file">Dernier fichier : %1$s (%2$s)</string>
+    <string name="bug_report_consent_required">Consentement + aperçu requis</string>
+    <string name="bug_report_send_chooser_title">Envoyer le ZIP du rapport de bug</string>
+    <string name="bug_report_no_email_app">Aucune application e-mail disponible pour envoyer ce rapport de bug.</string>
+    <string name="bug_report_included">Inclus :</string>
+    <string name="bug_report_included_session_errors">- Erreurs de session uniquement (%1$d entrées)</string>
+    <string name="bug_report_included_gateway_process">- Chaînes d\'erreur gateway/processus : %1$s</string>
+    <string name="bug_report_included_app_device_metadata">- Métadonnées de l\'application/de l\'appareil</string>
+    <string name="bug_report_excluded">Exclu :</string>
+    <string name="bug_report_excluded_conversation">- AUCUN texte/contenu de conversation</string>
+    <string name="bug_report_excluded_content_preview">- AUCUN contentPreview</string>
+    <string name="bug_report_consent_checkbox">Je comprends et je consens à générer ce ZIP.</string>
+    <string name="bug_report_generating">Génération du ZIP...</string>
+    <string name="bug_report_generated">Généré : %1$s (%2$s)</string>
+    <string name="bug_report_send_email">Envoyer un e-mail</string>
+    <string name="bug_report_generate_action">Générer le ZIP</string>
+    <string name="bug_report_close">Fermer</string>
+    <string name="bug_report_presence_present">présent</string>
+    <string name="bug_report_presence_none">aucun</string>
 </resources>
-
-
 
 
 

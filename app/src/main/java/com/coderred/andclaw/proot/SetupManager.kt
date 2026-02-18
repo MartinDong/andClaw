@@ -439,6 +439,11 @@ class SetupManager(
             _state.value = _state.value.copy(progress = 0.72f + pct * 0.16f)
         }
 
+        if (!prootManager.refreshChromiumExecutableMarker()) {
+            throw SetupException("Cannot find Chromium executable after installation")
+        }
+        log("   Chromium executable marker updated")
+
         saveVersion(playwrightVersionFile)
         updateStep(SetupStep.INSTALLING_CHROMIUM, 0.88f)
         log(">> Playwright Chromium installation complete")
@@ -450,23 +455,35 @@ class SetupManager(
      * 3개 번들을 각각 독립적으로 체크하고, 아웃데이트된 것만 재추출한다.
      * SetupScreen 없이 GatewayService에서 직접 호출 가능.
      */
-    fun updateBundleIfNeeded() {
+    fun isBundleUpdateRequired(): Boolean {
+        return !prootManager.isSystemToolsInstalled ||
+            isToolsOutdated() ||
+            !prootManager.isOpenClawInstalled ||
+            isOpenClawOutdated() ||
+            !prootManager.isChromiumInstalled ||
+            isPlaywrightOutdated()
+    }
+
+    fun updateBundleIfNeeded(onStepChanged: ((SetupStep) -> Unit)? = null) {
         val appVersion = getAppVersionCode()
 
         if (!prootManager.isSystemToolsInstalled || isToolsOutdated()) {
             android.util.Log.i("SetupManager", "System tools update required (installed=${getInstalledVersion(toolsVersionFile)}, app=$appVersion)")
+            onStepChanged?.invoke(SetupStep.INSTALLING_TOOLS)
             kotlinx.coroutines.runBlocking { installSystemTools() }
             android.util.Log.i("SetupManager", "System tools update complete")
         }
 
         if (!prootManager.isOpenClawInstalled || isOpenClawOutdated()) {
             android.util.Log.i("SetupManager", "OpenClaw update required (installed=${getInstalledVersion(openclawVersionFile)}, app=$appVersion)")
+            onStepChanged?.invoke(SetupStep.INSTALLING_OPENCLAW)
             kotlinx.coroutines.runBlocking { installOpenClaw() }
             android.util.Log.i("SetupManager", "OpenClaw update complete")
         }
 
         if (!prootManager.isChromiumInstalled || isPlaywrightOutdated()) {
             android.util.Log.i("SetupManager", "Playwright update required (installed=${getInstalledVersion(playwrightVersionFile)}, app=$appVersion)")
+            onStepChanged?.invoke(SetupStep.INSTALLING_CHROMIUM)
             kotlinx.coroutines.runBlocking { installPlaywright() }
             android.util.Log.i("SetupManager", "Playwright update complete")
         }

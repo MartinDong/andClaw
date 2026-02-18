@@ -182,11 +182,31 @@
     <string name="settings_about_powered_by">Powered by OpenClaw</string>
     <string name="settings_provider_openai_api">%1$s (API)</string>
     <string name="settings_provider_openai_codex">%1$s (Codex OAuth)</string>
+    <string name="settings_api_type">ประเภท API</string>
     <string name="settings_bot_token_dialog_title">%1$s Bot Token</string>
     <string name="settings_bot_restart_notice_message">The gateway will restart.</string>
+
+    <string name="bug_report_title">สร้างไฟล์ ZIP รายงานบั๊ก</string>
+    <string name="bug_report_last_file">ไฟล์ล่าสุด: %1$s (%2$s)</string>
+    <string name="bug_report_consent_required">ต้องยินยอม + ต้องมีตัวอย่างก่อน</string>
+    <string name="bug_report_send_chooser_title">ส่งไฟล์ ZIP รายงานบั๊ก</string>
+    <string name="bug_report_no_email_app">ไม่มีแอปอีเมลสำหรับส่งรายงานบั๊กนี้</string>
+    <string name="bug_report_included">รวม:</string>
+    <string name="bug_report_included_session_errors">- เฉพาะข้อผิดพลาดของเซสชัน (%1$d รายการ)</string>
+    <string name="bug_report_included_gateway_process">- สตริงข้อผิดพลาดของเกตเวย์/โปรเซส: %1$s</string>
+    <string name="bug_report_included_app_device_metadata">- เมทาดาทาแอป/อุปกรณ์</string>
+    <string name="bug_report_excluded">ไม่รวม:</string>
+    <string name="bug_report_excluded_conversation">- ไม่มีข้อความ/เนื้อหาการสนทนา</string>
+    <string name="bug_report_excluded_content_preview">- ไม่มี contentPreview</string>
+    <string name="bug_report_consent_checkbox">ฉันเข้าใจและยินยอมให้สร้างไฟล์ ZIP นี้</string>
+    <string name="bug_report_generating">กำลังสร้าง ZIP...</string>
+    <string name="bug_report_generated">สร้างแล้ว: %1$s (%2$s)</string>
+    <string name="bug_report_send_email">ส่งอีเมล</string>
+    <string name="bug_report_generate_action">สร้าง ZIP</string>
+    <string name="bug_report_close">ปิด</string>
+    <string name="bug_report_presence_present">มี</string>
+    <string name="bug_report_presence_none">ไม่มี</string>
 </resources>
-
-
 
 
 

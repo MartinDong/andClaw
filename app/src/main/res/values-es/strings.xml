@@ -194,11 +194,31 @@
     <string name="settings_about_powered_by">Powered by OpenClaw</string>
     <string name="settings_provider_openai_api">%1$s (API)</string>
     <string name="settings_provider_openai_codex">%1$s (Codex OAuth)</string>
+    <string name="settings_api_type">Tipo de API</string>
     <string name="settings_bot_token_dialog_title">%1$s Bot Token</string>
     <string name="settings_bot_restart_notice_message">The gateway will restart.</string>
+
+    <string name="bug_report_title">Generar ZIP de informe de error</string>
+    <string name="bug_report_last_file">Último archivo: %1$s (%2$s)</string>
+    <string name="bug_report_consent_required">Se requiere consentimiento + vista previa</string>
+    <string name="bug_report_send_chooser_title">Enviar ZIP del informe de error</string>
+    <string name="bug_report_no_email_app">No hay ninguna app de correo disponible para enviar este informe.</string>
+    <string name="bug_report_included">Incluye:</string>
+    <string name="bug_report_included_session_errors">- Solo errores de sesión (%1$d entradas)</string>
+    <string name="bug_report_included_gateway_process">- Cadenas de error de gateway/proceso: %1$s</string>
+    <string name="bug_report_included_app_device_metadata">- Metadatos de app/dispositivo</string>
+    <string name="bug_report_excluded">Excluye:</string>
+    <string name="bug_report_excluded_conversation">- SIN texto/contenido de conversación</string>
+    <string name="bug_report_excluded_content_preview">- SIN contentPreview</string>
+    <string name="bug_report_consent_checkbox">Entiendo y doy mi consentimiento para generar este ZIP.</string>
+    <string name="bug_report_generating">Generando ZIP...</string>
+    <string name="bug_report_generated">Generado: %1$s (%2$s)</string>
+    <string name="bug_report_send_email">Enviar correo</string>
+    <string name="bug_report_generate_action">Generar ZIP</string>
+    <string name="bug_report_close">Cerrar</string>
+    <string name="bug_report_presence_present">presente</string>
+    <string name="bug_report_presence_none">ninguno</string>
 </resources>
-
-
 
 
 

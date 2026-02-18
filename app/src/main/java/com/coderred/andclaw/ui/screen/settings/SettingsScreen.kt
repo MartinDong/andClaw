@@ -1,7 +1,11 @@
+@file:Suppress("PackageDirectoryMismatch", "FunctionName")
+
 package com.coderred.andclaw.ui.screen.settings
 
+import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.net.Uri
+import android.os.Build
 import android.widget.Toast
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -31,6 +35,7 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -66,11 +71,16 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.coderred.andclaw.BuildConfig
 import com.coderred.andclaw.R
+import com.coderred.andclaw.data.BugReportEmailIntentBuilder
+import com.coderred.andclaw.data.BugReportEmailMetadata
+import com.coderred.andclaw.data.BugReportEmailSummary
 import com.coderred.andclaw.ui.component.ModelSelectionDialog
 import com.coderred.andclaw.ui.component.WhatsAppQrDialog
 import com.coderred.andclaw.ui.screen.dashboard.WhatsAppQrState
+import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
+@Suppress("FunctionName")
 @Composable
 fun SettingsScreen(
     onBack: () -> Unit,
@@ -96,7 +106,19 @@ fun SettingsScreen(
     val isCodexAuthenticated by viewModel.isCodexAuthenticated.collectAsState()
     val codexAuthUrl by viewModel.codexAuthUrl.collectAsState()
     val codexAuthDebugLine by viewModel.codexAuthDebugLine.collectAsState()
+    val bugReportUiState by viewModel.bugReportUiState.collectAsState()
     val context = LocalContext.current
+    val isOpenAiProviderFamily = apiProvider == "openai" || apiProvider == "openai-codex"
+    val openAiProviderLabel = stringResource(R.string.onboarding_provider_openai)
+    val selectedModelDisplay = when {
+        selectedModel.isBlank() -> stringResource(R.string.settings_model_default)
+        selectedModel.startsWith("openrouter/") -> selectedModel.removePrefix("openrouter/")
+        selectedModel.startsWith("anthropic/") -> selectedModel.removePrefix("anthropic/")
+        selectedModel.startsWith("openai-codex/") -> selectedModel.removePrefix("openai-codex/")
+        selectedModel.startsWith("openai/") -> selectedModel.removePrefix("openai/")
+        selectedModel.startsWith("google/") -> selectedModel.removePrefix("google/")
+        else -> selectedModel
+    }
 
     var showModelDialog by remember { mutableStateOf(false) }
     var showProviderDialog by remember { mutableStateOf(false) }
@@ -281,41 +303,27 @@ fun SettingsScreen(
                     )
 
                     // Model
-                    if (apiProvider == "openrouter") {
+                    SettingClickableRow(
+                        title = stringResource(R.string.settings_select_model),
+                        value = selectedModelDisplay,
+                        onClick = {
+                            showModelDialog = true
+                            viewModel.fetchModelsForCurrentProvider()
+                        },
+                    )
+
+                    if (isOpenAiProviderFamily) {
                         HorizontalDivider(
                             modifier = Modifier.padding(horizontal = 20.dp),
                             color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
                         )
 
                         SettingClickableRow(
-                            title = stringResource(R.string.settings_select_model),
-                            value = if (selectedModel.isNotBlank()) {
-                                selectedModel.removePrefix("openrouter/")
-                            } else {
-                                stringResource(R.string.settings_model_default)
-                            },
-                            onClick = {
-                                showModelDialog = true
-                                viewModel.fetchModels()
-                            },
-                        )
-                    } else if (apiProvider == "openai" || apiProvider == "openai-codex") {
-                        HorizontalDivider(
-                            modifier = Modifier.padding(horizontal = 20.dp),
-                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
-                        )
-                        SettingClickableRow(
-                            title = stringResource(R.string.settings_select_model),
+                            title = stringResource(R.string.settings_api_type),
                             value = if (apiProvider == "openai-codex") {
-                                stringResource(
-                                    R.string.settings_provider_openai_codex,
-                                    stringResource(R.string.onboarding_provider_openai)
-                                )
+                                stringResource(R.string.settings_provider_openai_codex, openAiProviderLabel)
                             } else {
-                                stringResource(
-                                    R.string.settings_provider_openai_api,
-                                    stringResource(R.string.onboarding_provider_openai)
-                                )
+                                stringResource(R.string.settings_provider_openai_api, openAiProviderLabel)
                             },
                             onClick = { showGptSubscriptionDialog = true },
                         )
@@ -326,7 +334,6 @@ fun SettingsScreen(
                         color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
                     )
 
-                    // API
                     if (apiProvider != "openai-codex") {
                         SettingClickableRow(
                             title = stringResource(R.string.settings_api_key),
@@ -547,6 +554,20 @@ fun SettingsScreen(
                         value = "View",
                         onClick = { showOssLicensesDialog = true },
                     )
+                    HorizontalDivider(
+                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
+                    )
+                    SettingClickableRow(
+                        title = stringResource(R.string.bug_report_title),
+                        value = bugReportUiState.artifactInfo?.let {
+                            stringResource(
+                                R.string.bug_report_last_file,
+                                it.fileName,
+                                formatFileSize(it.sizeBytes),
+                            )
+                        } ?: stringResource(R.string.bug_report_consent_required),
+                        onClick = { viewModel.openBugReportDialog() },
+                    )
                 }
             }
 
@@ -569,7 +590,7 @@ fun SettingsScreen(
                 }
             },
             onDismiss = { showModelDialog = false },
-            onRetry = { viewModel.fetchModels() },
+            onRetry = { viewModel.fetchModelsForCurrentProvider() },
         )
     }
 
@@ -726,6 +747,44 @@ fun SettingsScreen(
             confirmButton = {
                 TextButton(onClick = { showOssLicensesDialog = false }) {
                     Text(stringResource(android.R.string.ok))
+                }
+            },
+        )
+    }
+
+    if (bugReportUiState.isVisible) {
+        BugReportDialog(
+            state = bugReportUiState,
+            onDismiss = { viewModel.dismissBugReportDialog() },
+            onConsentChanged = { viewModel.setBugReportConsent(it) },
+            onGenerate = { viewModel.generateBugReportZip() },
+            onSend = {
+                val artifact = bugReportUiState.artifact ?: return@BugReportDialog
+                val intent = BugReportEmailIntentBuilder.build(
+                    artifact = artifact,
+                    summary = BugReportEmailSummary(
+                        sessionErrorCount = bugReportUiState.preview.sessionErrorCount,
+                        hasGatewayError = bugReportUiState.preview.hasGatewayError,
+                        hasProcessError = bugReportUiState.preview.hasProcessError,
+                    ),
+                    metadata = BugReportEmailMetadata(
+                        appVersionName = BuildConfig.VERSION_NAME,
+                        packageName = context.packageName,
+                        androidSdkInt = Build.VERSION.SDK_INT,
+                        deviceManufacturer = Build.MANUFACTURER.orEmpty(),
+                        deviceModel = Build.MODEL.orEmpty(),
+                        locale = Locale.getDefault().toLanguageTag(),
+                    ),
+                )
+                try {
+                    context.startActivity(
+                        Intent.createChooser(intent, context.getString(R.string.bug_report_send_chooser_title))
+                    )
+                    viewModel.setBugReportGenerationErrorMessage(null)
+                } catch (_: ActivityNotFoundException) {
+                    viewModel.setBugReportGenerationErrorMessage(
+                        context.getString(R.string.bug_report_no_email_app)
+                    )
                 }
             },
         )
@@ -939,7 +998,7 @@ private fun GptSubscriptionDialog(
     AlertDialog(
         onDismissRequest = onDismiss,
         shape = RoundedCornerShape(24.dp),
-        title = { Text(stringResource(R.string.settings_select_model)) },
+        title = { Text(stringResource(R.string.settings_api_type)) },
         text = {
             Column {
                 Row(
@@ -1190,4 +1249,152 @@ private fun BraveSearchKeyDialog(
             }
         },
     )
+}
+
+@Composable
+private fun BugReportDialog(
+    state: SettingsViewModel.BugReportUiState,
+    onDismiss: () -> Unit,
+    onConsentChanged: (Boolean) -> Unit,
+    onGenerate: () -> Unit,
+    onSend: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        shape = RoundedCornerShape(24.dp),
+        title = { Text(stringResource(R.string.bug_report_title)) },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 420.dp)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                Text(
+                    text = stringResource(R.string.bug_report_included),
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Text(
+                    text = stringResource(R.string.bug_report_included_session_errors, state.preview.sessionErrorCount),
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                Text(
+                    text = stringResource(
+                        R.string.bug_report_included_gateway_process,
+                        stringResource(
+                            if (state.preview.hasGatewayError || state.preview.hasProcessError) {
+                                R.string.bug_report_presence_present
+                            } else {
+                                R.string.bug_report_presence_none
+                            }
+                        ),
+                    ),
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                Text(
+                    text = stringResource(R.string.bug_report_included_app_device_metadata),
+                    style = MaterialTheme.typography.bodySmall,
+                )
+
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = stringResource(R.string.bug_report_excluded),
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Text(
+                    text = stringResource(R.string.bug_report_excluded_conversation),
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                Text(
+                    text = stringResource(R.string.bug_report_excluded_content_preview),
+                    style = MaterialTheme.typography.bodySmall,
+                )
+
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { onConsentChanged(!state.hasConsent) }
+                        .padding(top = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Checkbox(
+                        checked = state.hasConsent,
+                        onCheckedChange = { onConsentChanged(it) },
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = stringResource(R.string.bug_report_consent_checkbox),
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                }
+
+                if (state.isGenerating) {
+                    Text(
+                        text = stringResource(R.string.bug_report_generating),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+
+                state.artifactInfo?.let { artifact ->
+                    Text(
+                        text = stringResource(
+                            R.string.bug_report_generated,
+                            artifact.fileName,
+                            formatFileSize(artifact.sizeBytes),
+                        ),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                }
+
+                state.generationErrorMessage?.let { error ->
+                    Text(
+                        text = error,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                if (state.artifact != null) {
+                    TextButton(
+                        onClick = onSend,
+                        enabled = !state.isGenerating,
+                    ) {
+                        Text(stringResource(R.string.bug_report_send_email))
+                    }
+                }
+                TextButton(
+                    onClick = onGenerate,
+                    enabled = state.hasConsent && !state.isGenerating,
+                ) {
+                    Text(stringResource(R.string.bug_report_generate_action))
+                }
+            }
+        },
+        dismissButton = {
+            TextButton(
+                onClick = onDismiss,
+                enabled = !state.isGenerating,
+            ) {
+                Text(stringResource(R.string.bug_report_close))
+            }
+        },
+    )
+}
+
+private fun formatFileSize(sizeBytes: Long): String {
+    if (sizeBytes < 1024) return "$sizeBytes B"
+    if (sizeBytes < 1024 * 1024) {
+        val kb = sizeBytes / 1024.0
+        return String.format("%.1f KB", kb)
+    }
+    val mb = sizeBytes / (1024.0 * 1024.0)
+    return String.format("%.2f MB", mb)
 }

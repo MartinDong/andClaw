@@ -182,11 +182,31 @@
     <string name="settings_about_powered_by">Powered by OpenClaw</string>
     <string name="settings_provider_openai_api">%1$s (API)</string>
     <string name="settings_provider_openai_codex">%1$s (Codex OAuth)</string>
+    <string name="settings_api_type">Jenis API</string>
     <string name="settings_bot_token_dialog_title">%1$s Bot Token</string>
     <string name="settings_bot_restart_notice_message">The gateway will restart.</string>
+
+    <string name="bug_report_title">Buat ZIP laporan bug</string>
+    <string name="bug_report_last_file">File terakhir: %1$s (%2$s)</string>
+    <string name="bug_report_consent_required">Persetujuan + pratinjau diperlukan</string>
+    <string name="bug_report_send_chooser_title">Kirim ZIP laporan bug</string>
+    <string name="bug_report_no_email_app">Tidak ada aplikasi email untuk mengirim laporan bug ini.</string>
+    <string name="bug_report_included">Termasuk:</string>
+    <string name="bug_report_included_session_errors">- Hanya error sesi (%1$d entri)</string>
+    <string name="bug_report_included_gateway_process">- String error gateway/proses: %1$s</string>
+    <string name="bug_report_included_app_device_metadata">- Metadata aplikasi/perangkat</string>
+    <string name="bug_report_excluded">Tidak termasuk:</string>
+    <string name="bug_report_excluded_conversation">- TANPA teks/konten percakapan</string>
+    <string name="bug_report_excluded_content_preview">- TANPA contentPreview</string>
+    <string name="bug_report_consent_checkbox">Saya mengerti dan setuju untuk membuat ZIP ini.</string>
+    <string name="bug_report_generating">Membuat ZIP...</string>
+    <string name="bug_report_generated">Dibuat: %1$s (%2$s)</string>
+    <string name="bug_report_send_email">Kirim Email</string>
+    <string name="bug_report_generate_action">Buat ZIP</string>
+    <string name="bug_report_close">Tutup</string>
+    <string name="bug_report_presence_present">ada</string>
+    <string name="bug_report_presence_none">tidak ada</string>
 </resources>
-
-
 
 
 

@@ -1,3 +1,5 @@
+@file:Suppress("PackageDirectoryMismatch")
+
 package com.coderred.andclaw.ui.screen.settings
 
 import android.app.Application
@@ -12,9 +14,14 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.coderred.andclaw.R
 import com.coderred.andclaw.AndClawApp
+import com.coderred.andclaw.data.BugReportBundleBuilder
+import com.coderred.andclaw.data.BugReportZipArtifact
+import com.coderred.andclaw.data.BugReportZipWriter
 import com.coderred.andclaw.data.OpenRouterModel
+import com.coderred.andclaw.data.SessionLogEntry
 import com.coderred.andclaw.data.parseOpenRouterModels
 import com.coderred.andclaw.data.GatewayStatus
+import com.coderred.andclaw.data.isSessionError
 import com.coderred.andclaw.proot.GatewayWsClient
 import com.coderred.andclaw.service.GatewayService
 import com.coderred.andclaw.ui.screen.dashboard.WhatsAppQrState
@@ -49,6 +56,27 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         val output: String,
     )
 
+    data class BugReportPreview(
+        val sessionErrorCount: Int = 0,
+        val hasGatewayError: Boolean = false,
+        val hasProcessError: Boolean = false,
+    )
+
+    data class BugReportArtifactInfo(
+        val fileName: String,
+        val sizeBytes: Long,
+    )
+
+    data class BugReportUiState(
+        val isVisible: Boolean = false,
+        val hasConsent: Boolean = false,
+        val isGenerating: Boolean = false,
+        val preview: BugReportPreview = BugReportPreview(),
+        val artifact: BugReportZipArtifact? = null,
+        val artifactInfo: BugReportArtifactInfo? = null,
+        val generationErrorMessage: String? = null,
+    )
+
     companion object {
         private const val TAG = "AndClawCodexAuth"
         private const val OAUTH_CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann"
@@ -57,6 +85,8 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         private const val OAUTH_REDIRECT_URI = "http://localhost:1455/auth/callback"
         private const val OAUTH_SCOPE = "openid profile email offline_access"
         private const val OAUTH_JWT_CLAIM_PATH = "https://api.openai.com/auth"
+        private const val OPENCLAW_BUILTIN_MODELS_PATH =
+            "usr/local/lib/node_modules/openclaw/node_modules/@mariozechner/pi-ai/dist/models.generated.js"
     }
     private val prefs = (application as AndClawApp).preferencesManager
     private val prootManager = (application as AndClawApp).prootManager
@@ -125,6 +155,8 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     val isDoctorFixRunning: StateFlow<Boolean> = _isDoctorFixRunning.asStateFlow()
     private val _doctorFixResult = MutableStateFlow<DoctorFixResult?>(null)
     val doctorFixResult: StateFlow<DoctorFixResult?> = _doctorFixResult.asStateFlow()
+    private val _bugReportUiState = MutableStateFlow(BugReportUiState())
+    val bugReportUiState: StateFlow<BugReportUiState> = _bugReportUiState.asStateFlow()
     private val codexAuthRunning = AtomicBoolean(false)
     private val oauthServerLock = Any()
     private var oauthServerSocket: ServerSocket? = null
@@ -268,6 +300,104 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         _doctorFixResult.value = null
     }
 
+    fun openBugReportDialog() {
+        viewModelScope.launch(Dispatchers.IO) {
+            val previewResult = runCatching {
+                val sessionEntries = processManager.getSessionLogEntries()
+                val gatewayErrorMessage = processManager.gatewayState.value.errorMessage
+                buildBugReportPreview(sessionEntries, gatewayErrorMessage)
+            }
+
+            val preview = previewResult.getOrElse { BugReportPreview() }
+            val openErrorMessage = previewResult.exceptionOrNull()?.message
+                ?.takeIf { it.isNotBlank() }
+                ?: previewResult.exceptionOrNull()?.let { "Failed to load preview data." }
+
+            withContext(Dispatchers.Main) {
+                _bugReportUiState.value = _bugReportUiState.value.copy(
+                    isVisible = true,
+                    hasConsent = false,
+                    isGenerating = false,
+                    preview = preview,
+                    generationErrorMessage = openErrorMessage,
+                )
+            }
+        }
+    }
+
+    fun dismissBugReportDialog() {
+        _bugReportUiState.value = _bugReportUiState.value.copy(
+            isVisible = false,
+            hasConsent = false,
+            isGenerating = false,
+            generationErrorMessage = null,
+        )
+    }
+
+    fun setBugReportConsent(consented: Boolean) {
+        _bugReportUiState.value = _bugReportUiState.value.copy(hasConsent = consented)
+    }
+
+    fun setBugReportGenerationErrorMessage(message: String?) {
+        _bugReportUiState.value = _bugReportUiState.value.copy(generationErrorMessage = message)
+    }
+
+    fun generateBugReportZip() {
+        val currentState = _bugReportUiState.value
+        if (!currentState.isVisible || !currentState.hasConsent || currentState.isGenerating) return
+
+        _bugReportUiState.value = currentState.copy(
+            isGenerating = true,
+            generationErrorMessage = null,
+        )
+
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val context = getApplication<Application>()
+                val sessionEntries = processManager.getSessionLogEntries()
+                val gatewayErrorMessage = processManager.gatewayState.value.errorMessage
+                val metadata = BugReportBundleBuilder.collectMetadata(context)
+                val bundle = BugReportBundleBuilder.build(
+                    sessionEntries = sessionEntries,
+                    metadata = metadata,
+                    gatewayErrorMessage = gatewayErrorMessage,
+                    processErrorMessage = gatewayErrorMessage,
+                )
+                val artifact = BugReportZipWriter.write(context, bundle)
+                val artifactInfo = BugReportArtifactInfo(
+                    fileName = artifact.file.name,
+                    sizeBytes = artifact.file.length(),
+                )
+                val preview = buildBugReportPreview(sessionEntries, gatewayErrorMessage)
+
+                withContext(Dispatchers.Main) {
+                    _bugReportUiState.value = _bugReportUiState.value.copy(
+                        isGenerating = false,
+                        preview = preview,
+                        artifact = artifact,
+                        artifactInfo = artifactInfo,
+                        generationErrorMessage = null,
+                    )
+                }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    _bugReportUiState.value = _bugReportUiState.value.copy(
+                        isGenerating = false,
+                        generationErrorMessage = e.message ?: "Failed to generate bug report ZIP.",
+                    )
+                }
+            }
+        }
+    }
+
+    private fun buildBugReportPreview(sessionEntries: List<SessionLogEntry>, gatewayErrorMessage: String?): BugReportPreview {
+        return BugReportPreview(
+            sessionErrorCount = sessionEntries.count { it.isSessionError() },
+            hasGatewayError = !gatewayErrorMessage.isNullOrBlank(),
+            hasProcessError = !gatewayErrorMessage.isNullOrBlank(),
+        )
+    }
+
     fun setTelegramEnabled(enabled: Boolean) {
         viewModelScope.launch(Dispatchers.IO) {
             prefs.setTelegramEnabled(enabled)
@@ -364,6 +494,290 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
                 _isLoadingModels.value = false
             }
         }
+    }
+
+    fun fetchModelsForCurrentProvider() {
+        val provider = apiProvider.value
+        if (provider == "openrouter") {
+            fetchModels()
+            return
+        }
+
+        if (_isLoadingModels.value) return
+        _isLoadingModels.value = true
+        _modelLoadError.value = null
+
+        viewModelScope.launch {
+            try {
+                val models = withContext(Dispatchers.IO) {
+                    loadBuiltInModels(provider)
+                }
+                _availableModels.value = models
+                if (models.isEmpty()) {
+                    _modelLoadError.value = "No built-in models found."
+                }
+            } catch (e: Exception) {
+                _availableModels.value = emptyList()
+                _modelLoadError.value = e.message ?: "Failed to load built-in models."
+            } finally {
+                _isLoadingModels.value = false
+            }
+        }
+    }
+
+    private fun loadBuiltInModels(provider: String): List<OpenRouterModel> {
+        val fallbackModels = defaultBuiltInModels(provider)
+        val rootfsDir = prootManager.rootfsDir ?: return fallbackModels
+
+        val modelsFile = File(rootfsDir, OPENCLAW_BUILTIN_MODELS_PATH)
+        if (!modelsFile.exists()) {
+            return fallbackModels
+        }
+
+        val content = modelsFile.readText()
+        val sectionName = when (provider) {
+            "openai-codex" -> "openai-codex"
+            else -> provider
+        }
+
+        val entries = extractProviderModelEntries(content, sectionName)
+        if (entries.isEmpty() && provider == "openai-codex") {
+            val fallbackOpenAiEntries = extractProviderModelEntries(content, "openai")
+                .filter { it.id.contains("codex", ignoreCase = true) }
+            if (fallbackOpenAiEntries.isNotEmpty()) {
+                return fallbackOpenAiEntries
+                    .map { it.toOpenRouterModel() }
+                    .distinctBy { it.id }
+            }
+        }
+
+        return if (entries.isNotEmpty()) {
+            entries
+                .map { it.toOpenRouterModel() }
+                .distinctBy { it.id }
+        } else {
+            fallbackModels
+        }
+    }
+
+    private data class BuiltInModelEntry(
+        val id: String,
+        val name: String,
+        val contextWindow: Int,
+        val maxTokens: Int,
+        val supportsReasoning: Boolean,
+        val supportsImages: Boolean,
+    ) {
+        fun toOpenRouterModel(): OpenRouterModel {
+            return OpenRouterModel(
+                id = id,
+                name = name,
+                contextLength = contextWindow,
+                maxOutputTokens = maxTokens,
+                isFree = false,
+                pricing = "Built-in",
+                supportsReasoning = supportsReasoning,
+                supportsImages = supportsImages,
+            )
+        }
+    }
+
+    private fun builtInModel(
+        id: String,
+        contextWindow: Int,
+        maxTokens: Int,
+        supportsReasoning: Boolean = false,
+        supportsImages: Boolean = false,
+    ): OpenRouterModel {
+        return BuiltInModelEntry(
+            id = id,
+            name = id,
+            contextWindow = contextWindow,
+            maxTokens = maxTokens,
+            supportsReasoning = supportsReasoning,
+            supportsImages = supportsImages,
+        ).toOpenRouterModel()
+    }
+
+    private fun defaultBuiltInModels(provider: String): List<OpenRouterModel> {
+        return when (provider) {
+            "anthropic" -> listOf(
+                builtInModel("claude-sonnet-4-5", contextWindow = 200_000, maxTokens = 8_192),
+                builtInModel("claude-opus-4.1", contextWindow = 200_000, maxTokens = 8_192),
+            )
+            "openai" -> listOf(
+                builtInModel("gpt-5-mini", contextWindow = 128_000, maxTokens = 16_384),
+                builtInModel("gpt-5", contextWindow = 128_000, maxTokens = 16_384),
+            )
+            "openai-codex" -> listOf(
+                builtInModel("gpt-5.3-codex", contextWindow = 128_000, maxTokens = 16_384),
+            )
+            "google" -> listOf(
+                builtInModel("gemini-2.5-flash", contextWindow = 1_000_000, maxTokens = 8_192),
+                builtInModel("gemini-2.5-pro", contextWindow = 1_000_000, maxTokens = 8_192),
+            )
+            else -> emptyList()
+        }
+    }
+
+    private fun extractProviderModelEntries(content: String, sectionName: String): List<BuiltInModelEntry> {
+        val marker = "\"$sectionName\": {"
+        val markerIndex = content.indexOf(marker)
+        if (markerIndex < 0) return emptyList()
+
+        val sectionStart = content.indexOf('{', markerIndex + marker.length - 1)
+        if (sectionStart < 0) return emptyList()
+
+        val sectionEnd = findMatchingBraceIndex(content, sectionStart)
+        if (sectionEnd <= sectionStart) return emptyList()
+
+        val result = mutableListOf<BuiltInModelEntry>()
+        var index = sectionStart + 1
+        var depth = 1
+
+        while (index < sectionEnd) {
+            when (content[index]) {
+                '{' -> depth++
+                '}' -> depth--
+                '"' -> {
+                    val (key, endQuoteIndex) = readJsonLikeString(content, index)
+                    index = endQuoteIndex
+                    if (depth == 1) {
+                        var cursor = skipWhitespace(content, endQuoteIndex + 1, sectionEnd)
+                        if (cursor < sectionEnd && content[cursor] == ':') {
+                            cursor = skipWhitespace(content, cursor + 1, sectionEnd)
+                            if (cursor < sectionEnd && content[cursor] == '{') {
+                                val objectEnd = findMatchingBraceIndex(content, cursor)
+                                if (objectEnd in (cursor + 1)..sectionEnd) {
+                                    val body = content.substring(cursor, objectEnd + 1)
+                                    parseBuiltInModelEntry(key, body)?.let { result.add(it) }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            index++
+        }
+
+        return result
+    }
+
+    private fun parseBuiltInModelEntry(id: String, body: String): BuiltInModelEntry? {
+        val contextWindow = parseJsNumberField(body, "contextWindow") ?: return null
+        val maxTokens = parseJsNumberField(body, "maxTokens") ?: 4096
+        val name = parseJsStringField(body, "name") ?: id
+        val supportsReasoning = parseJsBooleanField(body, "reasoning") ?: false
+        val supportsImages = parseInputSupportsImages(body)
+
+        return BuiltInModelEntry(
+            id = id,
+            name = name,
+            contextWindow = contextWindow,
+            maxTokens = maxTokens,
+            supportsReasoning = supportsReasoning,
+            supportsImages = supportsImages,
+        )
+    }
+
+    private fun parseJsStringField(body: String, field: String): String? {
+        val escapedField = Regex.escape(field)
+        val regex = Regex("\\b$escapedField\\s*:\\s*\"((?:\\\\.|[^\\\"])*)\"")
+        val raw = regex.find(body)?.groupValues?.get(1) ?: return null
+        return raw.replace("\\\"", "\"").replace("\\\\", "\\")
+    }
+
+    private fun parseJsBooleanField(body: String, field: String): Boolean? {
+        val escapedField = Regex.escape(field)
+        val regex = Regex("\\b$escapedField\\s*:\\s*(true|false)")
+        return when (regex.find(body)?.groupValues?.get(1)) {
+            "true" -> true
+            "false" -> false
+            else -> null
+        }
+    }
+
+    private fun parseJsNumberField(body: String, field: String): Int? {
+        val escapedField = Regex.escape(field)
+        val regex = Regex("\\b$escapedField\\s*:\\s*([0-9][0-9_]*(?:\\.[0-9_]+)?(?:[eE][+-]?[0-9]+)?)")
+        val raw = regex.find(body)?.groupValues?.get(1)?.replace("_", "") ?: return null
+        val value = raw.toDoubleOrNull() ?: return null
+        if (!value.isFinite() || value <= 0.0) return null
+        val longValue = value.toLong()
+        if (longValue <= 0L) return null
+        return longValue.coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
+    }
+
+    private fun parseInputSupportsImages(body: String): Boolean {
+        val regex = Regex("\\binput\\s*:\\s*\\[([^]]*)]", RegexOption.DOT_MATCHES_ALL)
+        val inputBody = regex.find(body)?.groupValues?.get(1) ?: return false
+        return Regex("\"(image|images|vision|video)\"").containsMatchIn(inputBody)
+    }
+
+    private fun skipWhitespace(text: String, start: Int, maxExclusive: Int): Int {
+        var index = start
+        while (index < maxExclusive && text[index].isWhitespace()) {
+            index++
+        }
+        return index
+    }
+
+    private fun findMatchingBraceIndex(text: String, openingBraceIndex: Int): Int {
+        if (openingBraceIndex !in text.indices || text[openingBraceIndex] != '{') return -1
+
+        var depth = 0
+        var inString = false
+        var escaped = false
+        var index = openingBraceIndex
+
+        while (index < text.length) {
+            val ch = text[index]
+            if (inString) {
+                if (escaped) {
+                    escaped = false
+                } else {
+                    when (ch) {
+                        '\\' -> escaped = true
+                        '"' -> inString = false
+                    }
+                }
+            } else {
+                when (ch) {
+                    '"' -> inString = true
+                    '{' -> depth++
+                    '}' -> {
+                        depth--
+                        if (depth == 0) return index
+                    }
+                }
+            }
+            index++
+        }
+
+        return -1
+    }
+
+    private fun readJsonLikeString(text: String, quoteIndex: Int): Pair<String, Int> {
+        val sb = StringBuilder()
+        var index = quoteIndex + 1
+        var escaped = false
+
+        while (index < text.length) {
+            val ch = text[index]
+            if (escaped) {
+                sb.append(ch)
+                escaped = false
+            } else {
+                when (ch) {
+                    '\\' -> escaped = true
+                    '"' -> return sb.toString() to index
+                    else -> sb.append(ch)
+                }
+            }
+            index++
+        }
+
+        return sb.toString() to text.lastIndex
     }
 
     fun refreshCodexAuthStatus() {

@@ -182,11 +182,31 @@
     <string name="settings_about_powered_by">Powered by OpenClaw</string>
     <string name="settings_provider_openai_api">%1$s (API)</string>
     <string name="settings_provider_openai_codex">%1$s (Codex OAuth)</string>
+    <string name="settings_api_type">Loại API</string>
     <string name="settings_bot_token_dialog_title">%1$s Bot Token</string>
     <string name="settings_bot_restart_notice_message">The gateway will restart.</string>
+
+    <string name="bug_report_title">Tạo ZIP báo cáo lỗi</string>
+    <string name="bug_report_last_file">Tệp gần nhất: %1$s (%2$s)</string>
+    <string name="bug_report_consent_required">Cần đồng ý + xem trước</string>
+    <string name="bug_report_send_chooser_title">Gửi ZIP báo cáo lỗi</string>
+    <string name="bug_report_no_email_app">Không có ứng dụng email để gửi báo cáo lỗi này.</string>
+    <string name="bug_report_included">Bao gồm:</string>
+    <string name="bug_report_included_session_errors">- Chỉ lỗi phiên (%1$d mục)</string>
+    <string name="bug_report_included_gateway_process">- Chuỗi lỗi gateway/quá trình: %1$s</string>
+    <string name="bug_report_included_app_device_metadata">- Siêu dữ liệu ứng dụng/thiết bị</string>
+    <string name="bug_report_excluded">Không bao gồm:</string>
+    <string name="bug_report_excluded_conversation">- KHÔNG có văn bản/nội dung hội thoại</string>
+    <string name="bug_report_excluded_content_preview">- KHÔNG có contentPreview</string>
+    <string name="bug_report_consent_checkbox">Tôi hiểu và đồng ý tạo ZIP này.</string>
+    <string name="bug_report_generating">Đang tạo ZIP...</string>
+    <string name="bug_report_generated">Đã tạo: %1$s (%2$s)</string>
+    <string name="bug_report_send_email">Gửi email</string>
+    <string name="bug_report_generate_action">Tạo ZIP</string>
+    <string name="bug_report_close">Đóng</string>
+    <string name="bug_report_presence_present">có</string>
+    <string name="bug_report_presence_none">không</string>
 </resources>
-
-
 
 
 

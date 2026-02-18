@@ -182,12 +182,31 @@
     <string name="settings_about_powered_by">Powered by OpenClaw</string>
     <string name="settings_provider_openai_api">%1$s (API)</string>
     <string name="settings_provider_openai_codex">%1$s (Codex OAuth)</string>
+    <string name="settings_api_type">API प्रकार</string>
     <string name="settings_bot_token_dialog_title">%1$s Bot Token</string>
     <string name="settings_bot_restart_notice_message">The gateway will restart.</string>
+
+    <string name="bug_report_title">बग रिपोर्ट ZIP बनाएँ</string>
+    <string name="bug_report_last_file">अंतिम फ़ाइल: %1$s (%2$s)</string>
+    <string name="bug_report_consent_required">सहमति + पूर्वावलोकन आवश्यक</string>
+    <string name="bug_report_send_chooser_title">बग रिपोर्ट ZIP भेजें</string>
+    <string name="bug_report_no_email_app">इस बग रिपोर्ट को भेजने के लिए कोई ईमेल ऐप उपलब्ध नहीं है।</string>
+    <string name="bug_report_included">शामिल:</string>
+    <string name="bug_report_included_session_errors">- केवल सत्र त्रुटियाँ (%1$d प्रविष्टियाँ)</string>
+    <string name="bug_report_included_gateway_process">- गेटवे/प्रोसेस त्रुटि स्ट्रिंग्स: %1$s</string>
+    <string name="bug_report_included_app_device_metadata">- ऐप/डिवाइस मेटाडेटा</string>
+    <string name="bug_report_excluded">शामिल नहीं:</string>
+    <string name="bug_report_excluded_conversation">- कोई बातचीत टेक्स्ट/सामग्री नहीं</string>
+    <string name="bug_report_excluded_content_preview">- कोई contentPreview नहीं</string>
+    <string name="bug_report_consent_checkbox">मैं समझता हूँ और यह ZIP बनाने के लिए सहमति देता हूँ।</string>
+    <string name="bug_report_generating">ZIP बना रहा है...</string>
+    <string name="bug_report_generated">बन गया: %1$s (%2$s)</string>
+    <string name="bug_report_send_email">ईमेल भेजें</string>
+    <string name="bug_report_generate_action">ZIP बनाएँ</string>
+    <string name="bug_report_close">बंद करें</string>
+    <string name="bug_report_presence_present">मौजूद</string>
+    <string name="bug_report_presence_none">कोई नहीं</string>
 </resources>
-
-
-
 
 
 

@@ -183,11 +183,31 @@
     <string name="settings_about_powered_by">Powered by OpenClaw</string>
     <string name="settings_provider_openai_api">%1$s (API)</string>
     <string name="settings_provider_openai_codex">%1$s (Codex OAuth)</string>
+    <string name="settings_api_type">APIタイプ</string>
     <string name="settings_bot_token_dialog_title">%1$s Bot Token</string>
     <string name="settings_bot_restart_notice_message">The gateway will restart.</string>
+
+    <string name="bug_report_title">バグレポートZIPを生成</string>
+    <string name="bug_report_last_file">最後のファイル: %1$s (%2$s)</string>
+    <string name="bug_report_consent_required">同意 + プレビューが必要</string>
+    <string name="bug_report_send_chooser_title">バグレポートZIPを送信</string>
+    <string name="bug_report_no_email_app">このバグレポートを送信できるメールアプリがありません。</string>
+    <string name="bug_report_included">含まれるもの:</string>
+    <string name="bug_report_included_session_errors">- セッションエラーのみ (%1$d 件)</string>
+    <string name="bug_report_included_gateway_process">- ゲートウェイ/プロセスのエラー文字列: %1$s</string>
+    <string name="bug_report_included_app_device_metadata">- アプリ/端末メタデータ</string>
+    <string name="bug_report_excluded">含まれないもの:</string>
+    <string name="bug_report_excluded_conversation">- 会話テキスト/内容は含めない</string>
+    <string name="bug_report_excluded_content_preview">- contentPreview は含めない</string>
+    <string name="bug_report_consent_checkbox">このZIPを生成することを理解し、同意します。</string>
+    <string name="bug_report_generating">ZIPを生成中...</string>
+    <string name="bug_report_generated">生成済み: %1$s (%2$s)</string>
+    <string name="bug_report_send_email">メールで送信</string>
+    <string name="bug_report_generate_action">ZIPを生成</string>
+    <string name="bug_report_close">閉じる</string>
+    <string name="bug_report_presence_present">あり</string>
+    <string name="bug_report_presence_none">なし</string>
 </resources>
-
-
 
 
 

@@ -182,11 +182,31 @@
     <string name="settings_about_powered_by">Powered by OpenClaw</string>
     <string name="settings_provider_openai_api">%1$s (API)</string>
     <string name="settings_provider_openai_codex">%1$s (Codex OAuth)</string>
+    <string name="settings_api_type">Тип API</string>
     <string name="settings_bot_token_dialog_title">%1$s Bot Token</string>
     <string name="settings_bot_restart_notice_message">The gateway will restart.</string>
+
+    <string name="bug_report_title">Сформировать ZIP отчёта об ошибке</string>
+    <string name="bug_report_last_file">Последний файл: %1$s (%2$s)</string>
+    <string name="bug_report_consent_required">Требуется согласие + предпросмотр</string>
+    <string name="bug_report_send_chooser_title">Отправить ZIP отчёта об ошибке</string>
+    <string name="bug_report_no_email_app">Нет приложения электронной почты для отправки этого отчёта.</string>
+    <string name="bug_report_included">Включено:</string>
+    <string name="bug_report_included_session_errors">- Только ошибки сессии (%1$d записей)</string>
+    <string name="bug_report_included_gateway_process">- Строки ошибок шлюза/процесса: %1$s</string>
+    <string name="bug_report_included_app_device_metadata">- Метаданные приложения/устройства</string>
+    <string name="bug_report_excluded">Исключено:</string>
+    <string name="bug_report_excluded_conversation">- НЕТ текста/содержимого разговора</string>
+    <string name="bug_report_excluded_content_preview">- НЕТ contentPreview</string>
+    <string name="bug_report_consent_checkbox">Я понимаю и даю согласие на создание этого ZIP.</string>
+    <string name="bug_report_generating">Создание ZIP...</string>
+    <string name="bug_report_generated">Создано: %1$s (%2$s)</string>
+    <string name="bug_report_send_email">Отправить письмо</string>
+    <string name="bug_report_generate_action">Создать ZIP</string>
+    <string name="bug_report_close">Закрыть</string>
+    <string name="bug_report_presence_present">есть</string>
+    <string name="bug_report_presence_none">нет</string>
 </resources>
-
-
 
 
 

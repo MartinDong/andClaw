@@ -214,11 +214,13 @@ private fun ModelItem(
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    Text(
-                        text = formatContextLength(model.contextLength),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
+                    formatContextLength(model.contextLength)?.let { contextLabel ->
+                        Text(
+                            text = contextLabel,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                     if (model.pricing.isNotBlank()) {
                         Text(
                             text = model.pricing,
@@ -246,7 +248,8 @@ private fun ModelItem(
     }
 }
 
-fun formatContextLength(contextLength: Int): String {
+fun formatContextLength(contextLength: Int): String? {
+    if (contextLength <= 0) return null
     return when {
         contextLength >= 1_000_000 -> "${contextLength / 1_000_000}M tokens"
         contextLength >= 1_000 -> "${contextLength / 1_000}K tokens"

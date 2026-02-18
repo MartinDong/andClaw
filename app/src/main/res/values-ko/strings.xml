@@ -193,12 +193,29 @@
     <string name="settings_about_powered_by">Powered by OpenClaw</string>
     <string name="settings_provider_openai_api">%1$s (API)</string>
     <string name="settings_provider_openai_codex">%1$s (Codex OAuth)</string>
+    <string name="settings_api_type">API 유형</string>
     <string name="settings_bot_token_dialog_title">%1$s Bot Token</string>    <string name="settings_bot_restart_notice_message">게이트웨이를 재시작합니다.</string>
+    <string name="bug_report_title">버그 리포트 ZIP 생성</string>
+    <string name="bug_report_last_file">마지막 파일: %1$s (%2$s)</string>
+    <string name="bug_report_consent_required">동의 + 미리보기 필요</string>
+    <string name="bug_report_send_chooser_title">버그 리포트 ZIP 보내기</string>
+    <string name="bug_report_no_email_app">이 버그 리포트를 보낼 이메일 앱을 찾을 수 없습니다.</string>
+    <string name="bug_report_included">포함:</string>
+    <string name="bug_report_included_session_errors">- 세션 오류만 (%1$d개 항목)</string>
+    <string name="bug_report_included_gateway_process">- 게이트웨이/프로세스 오류 문자열: %1$s</string>
+    <string name="bug_report_included_app_device_metadata">- 앱/기기 메타데이터</string>
+    <string name="bug_report_excluded">제외:</string>
+    <string name="bug_report_excluded_conversation">- 대화 텍스트/내용 제외</string>
+    <string name="bug_report_excluded_content_preview">- contentPreview 제외</string>
+    <string name="bug_report_consent_checkbox">이 ZIP에 포함되는 내용을 이해했으며, 전송에 동의합니다.</string>
+    <string name="bug_report_generating">ZIP 생성 중...</string>
+    <string name="bug_report_generated">생성됨: %1$s (%2$s)</string>
+    <string name="bug_report_send_email">이메일 보내기</string>
+    <string name="bug_report_generate_action">ZIP 생성</string>
+    <string name="bug_report_close">닫기</string>
+    <string name="bug_report_presence_present">있음</string>
+    <string name="bug_report_presence_none">없음</string>
 </resources>
-
-
-
-
 
 
 

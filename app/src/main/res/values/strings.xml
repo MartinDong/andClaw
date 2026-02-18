@@ -196,10 +196,29 @@
     <string name="settings_about_powered_by">Powered by OpenClaw</string>
     <string name="settings_provider_openai_api">%1$s (API)</string>
     <string name="settings_provider_openai_codex">%1$s (Codex OAuth)</string>
+    <string name="settings_api_type">API Type</string>
     <string name="settings_bot_token_dialog_title">%1$s Bot Token</string>    <string name="settings_bot_restart_notice_message">The gateway will restart.</string>
+    <string name="bug_report_title">Generate bug report ZIP</string>
+    <string name="bug_report_last_file">Last file: %1$s (%2$s)</string>
+    <string name="bug_report_consent_required">Consent + preview required</string>
+    <string name="bug_report_send_chooser_title">Send bug report ZIP</string>
+    <string name="bug_report_no_email_app">No email app available to send this bug report.</string>
+    <string name="bug_report_included">Included:</string>
+    <string name="bug_report_included_session_errors">- Session errors only (%1$d entries)</string>
+    <string name="bug_report_included_gateway_process">- Gateway/process error strings: %1$s</string>
+    <string name="bug_report_included_app_device_metadata">- App/device metadata</string>
+    <string name="bug_report_excluded">Excluded:</string>
+    <string name="bug_report_excluded_conversation">- NO conversation text/content</string>
+    <string name="bug_report_excluded_content_preview">- NO contentPreview</string>
+    <string name="bug_report_consent_checkbox">I understand and consent to generate this ZIP.</string>
+    <string name="bug_report_generating">Generating ZIP...</string>
+    <string name="bug_report_generated">Generated: %1$s (%2$s)</string>
+    <string name="bug_report_send_email">Send Email</string>
+    <string name="bug_report_generate_action">Generate ZIP</string>
+    <string name="bug_report_close">Close</string>
+    <string name="bug_report_presence_present">present</string>
+    <string name="bug_report_presence_none">none</string>
 </resources>
-
-
 
 
 
