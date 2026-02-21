@@ -207,8 +207,21 @@
     <string name="bug_report_close">关闭</string>
     <string name="bug_report_presence_present">有</string>
     <string name="bug_report_presence_none">无</string>
+    <string name="dashboard_update_failed_title">资源更新失败</string>
+    <string name="dashboard_update_failed_reason">原因（%1$s）：%2$s</string>
+    <string name="dashboard_update_failed_cooldown">自动重试已暂停。剩余冷却时间：%1$d 分钟</string>
+    <string name="dashboard_update_failed_last_at">最近一次失败：%1$s</string>
+    <string name="dashboard_update_action_retry">重试</string>
+    <string name="dashboard_update_action_recover">恢复安装</string>
+    <string name="dashboard_update_action_done">更新完成</string>
+    <string name="dashboard_update_action_failed">更新失败</string>
+    <string name="dashboard_update_recovery_done">恢复完成</string>
+    <string name="dashboard_update_recovery_failed">恢复失败</string>
+    <string name="dashboard_update_action_cooldown">自动重试处于冷却中</string>
+    <string name="dashboard_update_action_manual_exhausted">冷却期间手动重试已用过</string>
+    <string name="settings_api_key_get_link">获取 %1$s API 密钥 →</string>
+    <string name="bug_report_included_gateway_logs">- 网关 UI 日志（已脱敏）：%1$d 行</string>
 </resources>
-
 
 
 

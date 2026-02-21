@@ -207,8 +207,21 @@
     <string name="bug_report_close">閉じる</string>
     <string name="bug_report_presence_present">あり</string>
     <string name="bug_report_presence_none">なし</string>
+    <string name="dashboard_update_failed_title">アセット更新に失敗しました</string>
+    <string name="dashboard_update_failed_reason">理由 (%1$s): %2$s</string>
+    <string name="dashboard_update_failed_cooldown">自動再試行は一時停止中です。残りクールダウン: %1$d 分</string>
+    <string name="dashboard_update_failed_last_at">最終失敗: %1$s</string>
+    <string name="dashboard_update_action_retry">再試行</string>
+    <string name="dashboard_update_action_recover">復旧インストール</string>
+    <string name="dashboard_update_action_done">更新完了</string>
+    <string name="dashboard_update_action_failed">更新失敗</string>
+    <string name="dashboard_update_recovery_done">復旧完了</string>
+    <string name="dashboard_update_recovery_failed">復旧失敗</string>
+    <string name="dashboard_update_action_cooldown">自動再試行はクールダウン中です</string>
+    <string name="dashboard_update_action_manual_exhausted">手動再試行はクールダウン中に既に使用されています</string>
+    <string name="settings_api_key_get_link">%1$s APIキーを取得 →</string>
+    <string name="bug_report_included_gateway_logs">- Gateway UIログ（サニタイズ済み）: %1$d 行</string>
 </resources>
-
 
 
 

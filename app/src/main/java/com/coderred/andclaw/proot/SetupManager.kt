@@ -2,6 +2,9 @@ package com.coderred.andclaw.proot
 
 import android.content.Context
 import android.content.pm.PackageManager
+import android.os.SystemClock
+import com.coderred.andclaw.data.BundleUpdateFailureRecord
+import com.coderred.andclaw.data.PreferencesManager
 import com.coderred.andclaw.data.SetupState
 import com.coderred.andclaw.data.SetupStep
 import com.coderred.andclaw.proot.installer.DirectoryInstallSpec
@@ -10,12 +13,17 @@ import com.coderred.andclaw.proot.installer.ExecutableManifest
 import com.coderred.andclaw.proot.installer.TarInstallSpec
 import com.coderred.andclaw.proot.installer.TarInstaller
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
+import org.json.JSONObject
 import java.io.BufferedReader
 import java.io.File
+import java.io.FileNotFoundException
 import java.io.InputStreamReader
 
 /**
@@ -47,6 +55,9 @@ import java.io.InputStreamReader
 class SetupManager(
     private val context: Context,
     private val prootManager: ProotManager,
+    private val preferencesManager: PreferencesManager? = null,
+    private val nowEpochMs: () -> Long = { System.currentTimeMillis() },
+    private val nowElapsedMs: () -> Long = { SystemClock.elapsedRealtime() },
 ) {
     private val executableManifest = ExecutableManifest(context)
     private val tarInstaller = TarInstaller(context, executableManifest)
@@ -54,6 +65,7 @@ class SetupManager(
 
     private val _state = MutableStateFlow(SetupState())
     val state: StateFlow<SetupState> = _state.asStateFlow()
+    private val bundleFingerprintByAsset: Map<String, String> by lazy { loadBundleFingerprintByAsset() }
 
     // ── 로그 / 상태 헬퍼 ──
 
@@ -109,7 +121,11 @@ class SetupManager(
             log("   Library links ready")
 
             // ─── Step 2: rootfs 추출 (assets -> filesDir) ───
-            if (!prootManager.isRootfsInstalled) {
+            if (shouldExtractRootfs()) {
+                if (prootManager.isRootfsInstalled && !rootfsReadyFile.exists()) {
+                    log(">> Incomplete rootfs installation detected, recovering...")
+                    clearDependentInstallMarkers()
+                }
                 extractRootfsFromAssets()
             } else {
                 log(">> rootfs already installed, skipping")
@@ -121,7 +137,7 @@ class SetupManager(
             configureRootfs()
 
             // ─── Step 4: Node.js 추출 (assets -> rootfs/usr/local) ───
-            if (!prootManager.isNodeInstalled) {
+            if (shouldExtractNodeJs()) {
                 extractNodeJsFromAssets()
             } else {
                 log(">> Node.js already installed, skipping")
@@ -137,7 +153,11 @@ class SetupManager(
             }
 
             // ─── Step 6: OpenClaw 설치 ───
-            if (!prootManager.isOpenClawInstalled || isOpenClawOutdated()) {
+            val openClawPathRecoveryRequired = hasEncodedOpenClawPaths()
+            if (!prootManager.isOpenClawInstalled || isOpenClawOutdated() || openClawPathRecoveryRequired) {
+                if (openClawPathRecoveryRequired) {
+                    log(">> Incomplete OpenClaw underscore-path restore detected, reinstalling...")
+                }
                 installOpenClaw()
             } else {
                 log(">> OpenClaw already installed (v${getInstalledVersion(openclawVersionFile)}), skipping")
@@ -184,6 +204,7 @@ class SetupManager(
     private suspend fun extractRootfsFromAssets() {
         updateStep(SetupStep.EXTRACTING_ROOTFS, 0.05f)
         log(">> Extracting rootfs (bundled assets)...")
+        rootfsReadyFile.delete()
 
         // tar.gz 추출
         updateStep(SetupStep.EXTRACTING_ROOTFS, 0.10f)
@@ -203,6 +224,7 @@ class SetupManager(
             _state.value = _state.value.copy(progress = 0.10f + pct * 0.12f)
         }
 
+        saveVersion(rootfsReadyFile)
         log("   rootfs extraction complete")
         updateStep(SetupStep.EXTRACTING_ROOTFS, 0.22f)
     }
@@ -283,6 +305,7 @@ class SetupManager(
     private suspend fun extractNodeJsFromAssets() {
         updateStep(SetupStep.EXTRACTING_NODEJS, 0.26f)
         log(">> Installing Node.js ${ProotManager.NODEJS_VERSION} (bundled assets)...")
+        nodeVersionFile.delete()
 
         // 추출 (strip-components=1 로 node-v22.x/ 프리픽스 제거)
         updateStep(SetupStep.EXTRACTING_NODEJS, 0.30f)
@@ -305,6 +328,7 @@ class SetupManager(
             _state.value = _state.value.copy(progress = 0.30f + pct * 0.08f)
         }
 
+        saveVersion(nodeVersionFile)
         log("   Node.js installation complete")
         updateStep(SetupStep.EXTRACTING_NODEJS, 0.38f)
     }
@@ -332,6 +356,7 @@ class SetupManager(
         }
 
         saveVersion(toolsVersionFile)
+        saveFingerprint(toolsFingerprintFile, ProotManager.SYSTEM_TOOLS_ASSET)
         updateStep(SetupStep.INSTALLING_TOOLS, 0.55f)
         log(">> System tools installation complete")
     }
@@ -341,6 +366,7 @@ class SetupManager(
     private suspend fun installOpenClaw() = withContext(Dispatchers.IO) {
         updateStep(SetupStep.INSTALLING_OPENCLAW, 0.57f)
         log(">> Installing OpenClaw...")
+        openclawVersionFile.delete()
 
         updateStep(SetupStep.INSTALLING_OPENCLAW, 0.60f)
         log("   Copying files...")
@@ -376,6 +402,7 @@ class SetupManager(
         }
 
         saveVersion(openclawVersionFile)
+        saveFingerprint(openclawFingerprintFile, ProotManager.OPENCLAW_ASSET_DIR)
         updateStep(SetupStep.INSTALLING_OPENCLAW, 0.65f)
         log(">> OpenClaw installation complete")
     }
@@ -384,7 +411,8 @@ class SetupManager(
         val openclawRoot = File(prootManager.rootfsDir, "usr/local/lib/node_modules/openclaw")
         if (!openclawRoot.exists()) return
 
-        val encodedPrefix = "andclaw_us__"
+        val encodedPrefix = OPENCLAW_UNDERSCORE_PREFIX
+        var restoredCount = 0
         openclawRoot.walkTopDown()
             .filter { it.name.startsWith(encodedPrefix) }
             .toList()
@@ -393,10 +421,23 @@ class SetupManager(
                 val restoredName = "_" + entry.name.removePrefix(encodedPrefix)
                 val restored = File(entry.parentFile, restoredName)
                 if (restored.exists()) {
-                    if (restored.isDirectory) restored.deleteRecursively() else restored.delete()
+                    val deleted = if (restored.isDirectory) restored.deleteRecursively() else restored.delete()
+                    if (!deleted) {
+                        throw SetupException("Failed to replace restored path: ${restored.path}")
+                    }
                 }
-                entry.renameTo(restored)
+                if (!entry.renameTo(restored)) {
+                    throw SetupException("Failed to restore underscore path: ${entry.path}")
+                }
+                restoredCount++
             }
+
+        if (hasEncodedOpenClawPaths()) {
+            throw SetupException("Encoded OpenClaw paths remain after restore")
+        }
+        if (restoredCount > 0) {
+            log("   Restored $restoredCount encoded OpenClaw path(s)")
+        }
     }
 
     private fun ensureOpenClawExecutable() {
@@ -440,6 +481,7 @@ class SetupManager(
         log("   Chromium executable marker updated")
 
         saveVersion(playwrightVersionFile)
+        saveFingerprint(playwrightFingerprintFile, ProotManager.PLAYWRIGHT_ASSET)
         updateStep(SetupStep.INSTALLING_CHROMIUM, 0.88f)
         log(">> Playwright Chromium installation complete")
     }
@@ -454,33 +496,161 @@ class SetupManager(
         return !prootManager.isSystemToolsInstalled ||
             isToolsOutdated() ||
             !prootManager.isOpenClawInstalled ||
+            hasEncodedOpenClawPaths() ||
             isOpenClawOutdated() ||
             !prootManager.isChromiumInstalled ||
             isPlaywrightOutdated()
     }
 
-    fun updateBundleIfNeeded(onStepChanged: ((SetupStep) -> Unit)? = null) {
+    suspend fun updateBundleIfNeeded(onStepChanged: ((SetupStep) -> Unit)? = null) = withContext(Dispatchers.IO) {
         val appVersion = getAppVersionCode()
 
         if (!prootManager.isSystemToolsInstalled || isToolsOutdated()) {
             android.util.Log.i("SetupManager", "System tools update required (installed=${getInstalledVersion(toolsVersionFile)}, app=$appVersion)")
             onStepChanged?.invoke(SetupStep.INSTALLING_TOOLS)
-            kotlinx.coroutines.runBlocking { installSystemTools() }
+            installSystemTools()
             android.util.Log.i("SetupManager", "System tools update complete")
         }
 
-        if (!prootManager.isOpenClawInstalled || isOpenClawOutdated()) {
+        val openClawPathRecoveryRequired = hasEncodedOpenClawPaths()
+        if (!prootManager.isOpenClawInstalled || isOpenClawOutdated() || openClawPathRecoveryRequired) {
             android.util.Log.i("SetupManager", "OpenClaw update required (installed=${getInstalledVersion(openclawVersionFile)}, app=$appVersion)")
+            if (openClawPathRecoveryRequired) {
+                android.util.Log.i("SetupManager", "OpenClaw encoded underscore paths detected; reinstall required")
+            }
             onStepChanged?.invoke(SetupStep.INSTALLING_OPENCLAW)
-            kotlinx.coroutines.runBlocking { installOpenClaw() }
+            installOpenClaw()
             android.util.Log.i("SetupManager", "OpenClaw update complete")
         }
 
         if (!prootManager.isChromiumInstalled || isPlaywrightOutdated()) {
             android.util.Log.i("SetupManager", "Playwright update required (installed=${getInstalledVersion(playwrightVersionFile)}, app=$appVersion)")
             onStepChanged?.invoke(SetupStep.INSTALLING_CHROMIUM)
-            kotlinx.coroutines.runBlocking { installPlaywright() }
+            installPlaywright()
             android.util.Log.i("SetupManager", "Playwright update complete")
+        }
+    }
+
+    suspend fun getBundleUpdateFailureState(): BundleUpdateFailureState? = withContext(Dispatchers.IO) {
+        val prefs = preferencesManager ?: return@withContext null
+        val record = prefs.getBundleUpdateFailure(getAppVersionCode())
+        toFailureState(record)
+    }
+
+    suspend fun updateBundleIfNeededWithPolicy(
+        onStepChanged: ((SetupStep) -> Unit)? = null,
+        timeoutMs: Long = DEFAULT_UPDATE_TIMEOUT_MS,
+        manualRetry: Boolean = false,
+    ): BundleUpdateAttemptResult = withContext(Dispatchers.IO) {
+        return@withContext runBundleUpdateWithPolicy(
+            onStepChanged = onStepChanged,
+            timeoutMs = timeoutMs,
+            manualRetry = manualRetry,
+        )
+    }
+
+    suspend fun runRecoveryInstall(onStepChanged: ((SetupStep) -> Unit)? = null): BundleUpdateAttemptResult = withContext(Dispatchers.IO) {
+        return@withContext runBundleUpdateWithPolicy(
+            onStepChanged = onStepChanged,
+            timeoutMs = DEFAULT_UPDATE_TIMEOUT_MS,
+            manualRetry = true,
+            // Keep currently working runtime files until recovery actually succeeds.
+            // Clearing install markers is enough to force re-install on the recovery path.
+            beforeUpdate = { clearDependentInstallMarkers() },
+            allowWhenUpdateNotRequired = true,
+        )
+    }
+
+    private suspend fun runBundleUpdateWithPolicy(
+        onStepChanged: ((SetupStep) -> Unit)? = null,
+        timeoutMs: Long,
+        manualRetry: Boolean,
+        beforeUpdate: (() -> Unit)? = null,
+        allowWhenUpdateNotRequired: Boolean = false,
+    ): BundleUpdateAttemptResult = withContext(Dispatchers.IO) {
+        val appVersion = getAppVersionCode()
+        val prefs = preferencesManager
+        var consumeManualRetryOnFailure = false
+        if (!isBundleUpdateRequired() && !allowWhenUpdateNotRequired) {
+            prefs?.clearBundleUpdateFailure(appVersion)
+            return@withContext BundleUpdateAttemptResult(
+                outcome = BundleUpdateOutcome.SKIPPED_NOT_REQUIRED,
+            )
+        }
+
+        if (prefs != null) {
+            val failure = toFailureState(prefs.getBundleUpdateFailure(appVersion))
+            if (!failure.inCooldown && failure.manualRetryUsed) {
+                // A previous cooldown window has ended; manual retry allowance reopens.
+                prefs.setBundleUpdateManualRetryUsed(appVersion, false)
+            }
+            if (failure.inCooldown) {
+                if (!manualRetry) {
+                    return@withContext BundleUpdateAttemptResult(
+                        outcome = BundleUpdateOutcome.SKIPPED_COOLDOWN,
+                        failure = failure,
+                    )
+                }
+                if (failure.manualRetryUsed) {
+                    return@withContext BundleUpdateAttemptResult(
+                        outcome = BundleUpdateOutcome.SKIPPED_MANUAL_RETRY_EXHAUSTED,
+                        failure = failure,
+                    )
+                }
+                consumeManualRetryOnFailure = true
+            }
+        }
+
+        return@withContext try {
+            beforeUpdate?.invoke()
+            withTimeout(timeoutMs) {
+                updateBundleIfNeeded(onStepChanged)
+            }
+            prefs?.clearBundleUpdateFailure(appVersion)
+            BundleUpdateAttemptResult(
+                outcome = BundleUpdateOutcome.UPDATED,
+            )
+        } catch (error: TimeoutCancellationException) {
+            val summary = (error.message ?: error::class.java.simpleName).take(MAX_ERROR_LENGTH)
+            if (consumeManualRetryOnFailure) {
+                prefs?.setBundleUpdateManualRetryUsed(appVersion, true)
+            }
+            prefs?.recordBundleUpdateFailure(
+                currentVersion = appVersion,
+                failureType = BundleUpdateFailureType.TIMEOUT.name,
+                errorMessage = summary,
+                nowEpochMs = nowEpochMs(),
+                nowElapsedMs = nowElapsedMs(),
+            )
+            val failure = prefs?.getBundleUpdateFailure(appVersion)?.let(::toFailureState)
+            BundleUpdateAttemptResult(
+                outcome = BundleUpdateOutcome.FAILED,
+                failureType = BundleUpdateFailureType.TIMEOUT,
+                errorMessage = summary,
+                failure = failure,
+            )
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Exception) {
+            val failureType = classifyBundleUpdateFailure(error)
+            val summary = (error.message ?: error::class.java.simpleName).take(MAX_ERROR_LENGTH)
+            if (consumeManualRetryOnFailure) {
+                prefs?.setBundleUpdateManualRetryUsed(appVersion, true)
+            }
+            prefs?.recordBundleUpdateFailure(
+                currentVersion = appVersion,
+                failureType = failureType.name,
+                errorMessage = summary,
+                nowEpochMs = nowEpochMs(),
+                nowElapsedMs = nowElapsedMs(),
+            )
+            val failure = prefs?.getBundleUpdateFailure(appVersion)?.let(::toFailureState)
+            BundleUpdateAttemptResult(
+                outcome = BundleUpdateOutcome.FAILED,
+                failureType = failureType,
+                errorMessage = summary,
+                failure = failure,
+            )
         }
     }
 
@@ -489,18 +659,33 @@ class SetupManager(
     private val toolsVersionFile: File
         get() = File(prootManager.rootfsDir, ".tools_version")
 
+    private val rootfsReadyFile: File
+        get() = File(prootManager.rootfsDir, ".rootfs_version")
+
+    private val nodeVersionFile: File
+        get() = File(prootManager.rootfsDir, ".node_version")
+
     private val openclawVersionFile: File
         get() = File(prootManager.rootfsDir, ".bundle_version")
 
     private val playwrightVersionFile: File
         get() = File(prootManager.rootfsDir, ".playwright_version")
 
+    private val toolsFingerprintFile: File
+        get() = File(prootManager.rootfsDir, ".tools_fingerprint")
+
+    private val openclawFingerprintFile: File
+        get() = File(prootManager.rootfsDir, ".bundle_fingerprint")
+
+    private val playwrightFingerprintFile: File
+        get() = File(prootManager.rootfsDir, ".playwright_fingerprint")
+
     private fun getAppVersionCode(): Int {
         return try {
             val info = context.packageManager.getPackageInfo(context.packageName, 0)
             @Suppress("DEPRECATION")
             info.versionCode
-        } catch (_: PackageManager.NameNotFoundException) {
+        } catch (_: Exception) {
             0
         }
     }
@@ -517,16 +702,177 @@ class SetupManager(
         file.writeText(getAppVersionCode().toString())
     }
 
+    private fun getInstalledFingerprint(file: File): String {
+        return try {
+            file.readText().trim()
+        } catch (_: Exception) {
+            ""
+        }
+    }
+
+    private fun saveFingerprint(file: File, assetName: String) {
+        val bundledFingerprint = getBundledAssetFingerprint(assetName) ?: return
+        file.writeText(bundledFingerprint)
+    }
+
+    private fun getBundledAssetFingerprint(assetName: String): String? {
+        return bundleFingerprintByAsset[assetName]
+    }
+
+    private fun isAssetOutdated(
+        assetName: String,
+        fingerprintFile: File,
+        versionFile: File,
+    ): Boolean {
+        val bundledFingerprint = getBundledAssetFingerprint(assetName)
+        if (bundledFingerprint != null) {
+            return getInstalledFingerprint(fingerprintFile) != bundledFingerprint
+        }
+        // fingerprint 매니페스트가 없는 구버전 앱은 기존 versionCode 기반 비교로 폴백
+        return getInstalledVersion(versionFile) < getAppVersionCode()
+    }
+
+    internal fun shouldExtractRootfs(): Boolean {
+        return !prootManager.isRootfsInstalled || getInstalledVersion(rootfsReadyFile) <= 0
+    }
+
+    internal fun shouldExtractNodeJs(): Boolean {
+        return !prootManager.isNodeInstalled || getInstalledVersion(nodeVersionFile) <= 0
+    }
+
+    internal fun hasEncodedOpenClawPaths(): Boolean {
+        val openclawRoot = File(prootManager.rootfsDir, "usr/local/lib/node_modules/openclaw")
+        if (!openclawRoot.exists()) return false
+
+        return openclawRoot.walkTopDown().any { it.name.startsWith(OPENCLAW_UNDERSCORE_PREFIX) }
+    }
+
+    private fun clearDependentInstallMarkers() {
+        nodeVersionFile.delete()
+        toolsVersionFile.delete()
+        openclawVersionFile.delete()
+        playwrightVersionFile.delete()
+        toolsFingerprintFile.delete()
+        openclawFingerprintFile.delete()
+        playwrightFingerprintFile.delete()
+    }
+
+    private fun clearBundleInstallArtifacts() {
+        clearDependentInstallMarkers()
+
+        val allowlistPaths = listOf(
+            "usr/local/lib/node_modules/openclaw",
+            "usr/local/bin/openclaw",
+            "root/.cache/ms-playwright",
+            ".playwright_chrome_path",
+        )
+        allowlistPaths.forEach { relativePath ->
+            val target = File(prootManager.rootfsDir, relativePath)
+            if (!target.exists()) return@forEach
+            if (target.isDirectory) {
+                target.deleteRecursively()
+            } else {
+                target.delete()
+            }
+        }
+    }
+
+    private fun toFailureState(record: BundleUpdateFailureRecord): BundleUpdateFailureState {
+        val wallElapsed = record.lastFailAtEpochMs?.let { nowEpochMs() - it }
+        val monotonicElapsed = record.lastFailElapsedMs?.let { nowElapsedMs() - it }
+        val elapsed = listOfNotNull(wallElapsed, monotonicElapsed)
+            .filter { it >= 0L }
+            .minOrNull() ?: 0L
+        val inCooldown = record.failCountForCurrentVersion >= AUTO_RETRY_LIMIT &&
+            elapsed in 0 until COOLDOWN_MS
+        return BundleUpdateFailureState(
+            failCountForCurrentVersion = record.failCountForCurrentVersion,
+            lastFailAtEpochMs = record.lastFailAtEpochMs,
+            lastFailVersion = record.lastFailVersion,
+            lastError = record.lastError,
+            lastFailureType = record.lastFailureType,
+            manualRetryUsed = record.manualRetryUsed,
+            inCooldown = inCooldown,
+            cooldownRemainingMs = if (inCooldown) (COOLDOWN_MS - elapsed).coerceAtLeast(0L) else 0L,
+        )
+    }
+
+    private fun classifyBundleUpdateFailure(error: Throwable): BundleUpdateFailureType {
+        val message = (error.message ?: "").lowercase()
+        return when {
+            "timeout" in message -> BundleUpdateFailureType.TIMEOUT
+            "no space" in message || "enospc" in message -> BundleUpdateFailureType.NO_SPACE
+            "verify" in message || "validation failed" in message -> BundleUpdateFailureType.VERIFY_FAIL
+            error is java.io.IOException ||
+                "eio" in message ||
+                "input/output error" in message ||
+                "read-only file system" in message ||
+                "failed to read" in message ||
+                "failed to write" in message ||
+                "disk i/o" in message -> BundleUpdateFailureType.IO_ERROR
+            else -> BundleUpdateFailureType.UNKNOWN
+        }
+    }
+
+    private companion object {
+        private const val OPENCLAW_UNDERSCORE_PREFIX = "andclaw_us__"
+        private const val BUNDLE_FINGERPRINT_ASSET = "bundle-fingerprint.json"
+        private const val AUTO_RETRY_LIMIT = 3
+        private const val COOLDOWN_MS = 24L * 60L * 60L * 1000L
+        private const val DEFAULT_UPDATE_TIMEOUT_MS = 20L * 60L * 1000L
+        private const val MAX_ERROR_LENGTH = 500
+    }
+
     private fun isToolsOutdated(): Boolean {
-        return getInstalledVersion(toolsVersionFile) < getAppVersionCode()
+        return isAssetOutdated(
+            assetName = ProotManager.SYSTEM_TOOLS_ASSET,
+            fingerprintFile = toolsFingerprintFile,
+            versionFile = toolsVersionFile,
+        )
     }
 
     private fun isOpenClawOutdated(): Boolean {
-        return getInstalledVersion(openclawVersionFile) < getAppVersionCode()
+        return isAssetOutdated(
+            assetName = ProotManager.OPENCLAW_ASSET_DIR,
+            fingerprintFile = openclawFingerprintFile,
+            versionFile = openclawVersionFile,
+        )
     }
 
     private fun isPlaywrightOutdated(): Boolean {
-        return getInstalledVersion(playwrightVersionFile) < getAppVersionCode()
+        return isAssetOutdated(
+            assetName = ProotManager.PLAYWRIGHT_ASSET,
+            fingerprintFile = playwrightFingerprintFile,
+            versionFile = playwrightVersionFile,
+        )
+    }
+
+    private fun loadBundleFingerprintByAsset(): Map<String, String> {
+        val jsonText = try {
+            context.assets.open(BUNDLE_FINGERPRINT_ASSET).bufferedReader().use { it.readText() }
+        } catch (_: FileNotFoundException) {
+            return emptyMap()
+        } catch (_: Exception) {
+            return emptyMap()
+        }
+
+        return try {
+            val root = JSONObject(jsonText)
+            val assetsObj = root.optJSONObject("assets") ?: JSONObject()
+            buildMap {
+                val keys = assetsObj.keys()
+                while (keys.hasNext()) {
+                    val key = keys.next()
+                    val entryObj = assetsObj.optJSONObject(key)
+                    val sha = entryObj?.optString("sha256").orEmpty().trim()
+                    if (sha.isNotEmpty()) {
+                        put(key, sha)
+                    }
+                }
+            }
+        } catch (_: Exception) {
+            emptyMap()
+        }
     }
 
     // ── Step 8: 패치 ──
@@ -574,12 +920,12 @@ class SetupManager(
         }
 
         log("   Checking Node.js...")
-        if (executeInProot(". /root/.profile && node --version") != 0) {
+        if (executeInProot("node --version") != 0) {
             throw SetupException("Node.js check failed")
         }
 
         log("   Checking OpenClaw...")
-        executeInProot(". /root/.profile && openclaw --version 2>/dev/null || openclaw --help 2>&1 | head -1")
+        executeInProot("openclaw --version 2>/dev/null || openclaw --help 2>&1 | head -1")
         if (!prootManager.isOpenClawInstalled) {
             throw SetupException("OpenClaw validation failed")
         }
@@ -599,7 +945,13 @@ class SetupManager(
 
     private fun executeInProot(command: String): Int {
         val cmd = prootManager.buildProotCommand(command)
-        val env = prootManager.buildEnvironment()
+        val env = prootManager.buildEnvironment(
+            mapOf(
+                "HOME" to "/root",
+                "PATH" to "/usr/local/bin:/usr/bin:/bin",
+                "LANG" to "C.UTF-8",
+            ),
+        )
 
         val pb = ProcessBuilder(cmd).redirectErrorStream(true)
         pb.environment().putAll(env)
@@ -616,3 +968,37 @@ class SetupManager(
 }
 
 class SetupException(message: String) : Exception(message)
+
+data class BundleUpdateFailureState(
+    val failCountForCurrentVersion: Int,
+    val lastFailAtEpochMs: Long?,
+    val lastFailVersion: Int?,
+    val lastError: String?,
+    val lastFailureType: String?,
+    val manualRetryUsed: Boolean,
+    val inCooldown: Boolean,
+    val cooldownRemainingMs: Long,
+)
+
+enum class BundleUpdateFailureType {
+    NO_SPACE,
+    TIMEOUT,
+    VERIFY_FAIL,
+    IO_ERROR,
+    UNKNOWN,
+}
+
+enum class BundleUpdateOutcome {
+    UPDATED,
+    FAILED,
+    SKIPPED_NOT_REQUIRED,
+    SKIPPED_COOLDOWN,
+    SKIPPED_MANUAL_RETRY_EXHAUSTED,
+}
+
+data class BundleUpdateAttemptResult(
+    val outcome: BundleUpdateOutcome,
+    val failureType: BundleUpdateFailureType? = null,
+    val errorMessage: String? = null,
+    val failure: BundleUpdateFailureState? = null,
+)

@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name">andClaw</string>
+    <string name="app_name" translatable="false">andClaw</string>
 
     <!-- Notification -->
     <string name="notification_channel_name">OpenClaw Gateway</string>
@@ -85,6 +85,18 @@
     <string name="dashboard_status_error">Error</string>
     <string name="dashboard_status_stopped">Stopped</string>
     <string name="dashboard_btn_start">Start</string>
+    <string name="dashboard_update_failed_title">Asset update failed</string>
+    <string name="dashboard_update_failed_reason">Reason (%1$s): %2$s</string>
+    <string name="dashboard_update_failed_cooldown">Auto retry paused. Cooldown remaining: %1$d min</string>
+    <string name="dashboard_update_failed_last_at">Last failed: %1$s</string>
+    <string name="dashboard_update_action_retry">Retry</string>
+    <string name="dashboard_update_action_recover">Recovery install</string>
+    <string name="dashboard_update_action_done">Update completed</string>
+    <string name="dashboard_update_action_failed">Update failed</string>
+    <string name="dashboard_update_recovery_done">Recovery completed</string>
+    <string name="dashboard_update_recovery_failed">Recovery failed</string>
+    <string name="dashboard_update_action_cooldown">Auto retry is in cooldown</string>
+    <string name="dashboard_update_action_manual_exhausted">Manual retry already used in cooldown</string>
     <string name="dashboard_apikey_required_title">API key required</string>
     <string name="dashboard_apikey_required_message">Please set up your API key in Settings before starting the gateway.</string>
     <string name="dashboard_apikey_go_settings">Go to Settings</string>
@@ -197,7 +209,8 @@
     <string name="settings_provider_openai_api">%1$s (API)</string>
     <string name="settings_provider_openai_codex">%1$s (Codex OAuth)</string>
     <string name="settings_api_type">API Type</string>
-    <string name="settings_bot_token_dialog_title">%1$s Bot Token</string>    <string name="settings_bot_restart_notice_message">The gateway will restart.</string>
+    <string name="settings_bot_token_dialog_title">%1$s Bot Token</string>
+    <string name="settings_bot_restart_notice_message">The gateway will restart.</string>
     <string name="bug_report_title">Generate bug report ZIP</string>
     <string name="bug_report_last_file">Last file: %1$s (%2$s)</string>
     <string name="bug_report_consent_required">Consent + preview required</string>
@@ -207,6 +220,7 @@
     <string name="bug_report_included_session_errors">- Session errors only (%1$d entries)</string>
     <string name="bug_report_included_gateway_process">- Gateway/process error strings: %1$s</string>
     <string name="bug_report_included_app_device_metadata">- App/device metadata</string>
+    <string name="bug_report_included_gateway_logs">- Gateway UI logs (sanitized): %1$d lines</string>
     <string name="bug_report_excluded">Excluded:</string>
     <string name="bug_report_excluded_conversation">- NO conversation text/content</string>
     <string name="bug_report_excluded_content_preview">- NO contentPreview</string>
@@ -219,9 +233,6 @@
     <string name="bug_report_presence_present">present</string>
     <string name="bug_report_presence_none">none</string>
 </resources>
-
-
-
 
 
 

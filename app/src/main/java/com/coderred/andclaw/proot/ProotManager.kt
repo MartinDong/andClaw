@@ -248,8 +248,9 @@ class ProotManager(private val context: Context) {
 
     fun buildGatewayCommand(): List<String> {
         return buildProotCommand(
-            ". /root/.profile && " +
-                "export NODE_OPTIONS='--require /root/.openclaw-patch.js' && " +
+            "export NODE_OPTIONS='--require /root/.openclaw-patch.js' && " +
+                "TG_IP=$(node -e \"const dns=require('dns');dns.resolve4('api.telegram.org',(e,a)=>{if(e||!a||!a.length)process.exit(1);process.stdout.write(a[0]);});\" 2>/dev/null || true); " +
+                "(grep -v 'api.telegram.org' /etc/hosts 2>/dev/null; [ -n \"\$TG_IP\" ] && echo \"\$TG_IP api.telegram.org\") > /tmp/hosts.andclaw 2>/dev/null && cat /tmp/hosts.andclaw > /etc/hosts 2>/dev/null || true; " +
                 "openclaw gateway run"
         )
     }

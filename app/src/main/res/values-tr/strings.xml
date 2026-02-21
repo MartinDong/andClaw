@@ -206,8 +206,21 @@
     <string name="bug_report_close">Kapat</string>
     <string name="bug_report_presence_present">var</string>
     <string name="bug_report_presence_none">yok</string>
+    <string name="dashboard_update_failed_title">Varlık güncellemesi başarısız</string>
+    <string name="dashboard_update_failed_reason">Neden (%1$s): %2$s</string>
+    <string name="dashboard_update_failed_cooldown">Otomatik yeniden deneme duraklatıldı. Kalan bekleme süresi: %1$d dk</string>
+    <string name="dashboard_update_failed_last_at">Son başarısızlık: %1$s</string>
+    <string name="dashboard_update_action_retry">Yeniden Dene</string>
+    <string name="dashboard_update_action_recover">Kurtarma kurulumu</string>
+    <string name="dashboard_update_action_done">Güncelleme tamamlandı</string>
+    <string name="dashboard_update_action_failed">Güncelleme başarısız</string>
+    <string name="dashboard_update_recovery_done">Kurtarma tamamlandı</string>
+    <string name="dashboard_update_recovery_failed">Kurtarma başarısız</string>
+    <string name="dashboard_update_action_cooldown">Otomatik yeniden deneme bekleme süresinde</string>
+    <string name="dashboard_update_action_manual_exhausted">Manuel yeniden deneme bekleme süresinde zaten kullanıldı</string>
+    <string name="settings_api_key_get_link">%1$s API anahtarı al →</string>
+    <string name="bug_report_included_gateway_logs">- Gateway UI günlükleri (temizlendi): %1$d satır</string>
 </resources>
-
 
 
 

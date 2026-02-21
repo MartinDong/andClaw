@@ -9,6 +9,7 @@ import android.os.BatteryManager
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.coderred.andclaw.AndClawApp
+import com.coderred.andclaw.R
 import com.coderred.andclaw.data.ChannelConfig
 import com.coderred.andclaw.data.GatewayState
 import com.coderred.andclaw.data.GatewayStatus
@@ -17,6 +18,8 @@ import com.coderred.andclaw.data.SessionLogEntry
 import com.coderred.andclaw.service.GatewayService
 import com.coderred.andclaw.data.OpenRouterModel
 import com.coderred.andclaw.data.parseOpenRouterModels
+import com.coderred.andclaw.proot.BundleUpdateFailureState
+import com.coderred.andclaw.proot.BundleUpdateOutcome
 import com.coderred.andclaw.proot.GatewayWsClient
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -54,6 +57,9 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
     val channelConfig: StateFlow<ChannelConfig> = app.preferencesManager.channelConfig
         .stateIn(viewModelScope, SharingStarted.Eagerly, ChannelConfig())
 
+    val isLogSectionUnlocked: StateFlow<Boolean> = app.preferencesManager.logSectionUnlocked
+        .stateIn(viewModelScope, SharingStarted.Eagerly, false)
+
     private val _batteryLevel = MutableStateFlow(0)
     val batteryLevel: StateFlow<Int> = _batteryLevel.asStateFlow()
 
@@ -65,6 +71,15 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
 
     private val _dashboardLoading = MutableStateFlow(false)
     val dashboardLoading: StateFlow<Boolean> = _dashboardLoading.asStateFlow()
+
+    private val _bundleUpdateFailure = MutableStateFlow<BundleUpdateFailureState?>(null)
+    val bundleUpdateFailure: StateFlow<BundleUpdateFailureState?> = _bundleUpdateFailure.asStateFlow()
+
+    private val _bundleActionInProgress = MutableStateFlow(false)
+    val bundleActionInProgress: StateFlow<Boolean> = _bundleActionInProgress.asStateFlow()
+
+    private val _bundleActionMessage = MutableStateFlow<String?>(null)
+    val bundleActionMessage: StateFlow<String?> = _bundleActionMessage.asStateFlow()
 
     private val _availableModels = MutableStateFlow<List<OpenRouterModel>>(emptyList())
     val availableModels: StateFlow<List<OpenRouterModel>> = _availableModels.asStateFlow()
@@ -91,12 +106,19 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
     private var wsClient: GatewayWsClient? = null
     private var whatsappQrJob: Job? = null
     private var restartJob: Job? = null
+    private var shouldRestartAfterWhatsAppPairing: Boolean = false
 
     init {
+        viewModelScope.launch(Dispatchers.IO) {
+            // 앱 시작 시 로그 섹션은 기본 잠금 상태로 초기화한다.
+            app.preferencesManager.setLogSectionUnlocked(false)
+        }
+
         viewModelScope.launch {
             while (isActive) {
                 updateBatteryInfo()
                 updateMemoryInfo()
+                refreshBundleUpdateFailure()
                 delay(5000)
             }
         }
@@ -237,22 +259,24 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
 
     fun startWhatsAppQr() {
         whatsappQrJob?.cancel()
+        shouldRestartAfterWhatsAppPairing = false
         _whatsappQrState.value = WhatsAppQrState.Loading
         whatsappQrJob = viewModelScope.launch {
             try {
                 val client = GatewayWsClient(app.prootManager)
                 wsClient = client
 
-                val connected = withContext(Dispatchers.IO) { client.connect() }
-                if (!connected) {
-                    _whatsappQrState.value = WhatsAppQrState.Error("WebSocket connection failed")
-                    return@launch
-                }
-
                 val qrData = withContext(Dispatchers.IO) { client.startWhatsAppLogin() }
                 if (qrData == null) {
-                    _whatsappQrState.value = WhatsAppQrState.Error("Failed to get QR code")
+                    val reason = client.getLastCallErrorMessage()
+                    val message = if (reason.isNullOrBlank()) {
+                        "Failed to get QR code"
+                    } else {
+                        "Failed to get QR code: $reason"
+                    }
+                    _whatsappQrState.value = WhatsAppQrState.Error(message)
                     client.close()
+                    wsClient = null
                     return@launch
                 }
 
@@ -262,11 +286,20 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
                 // 로그인 완료 대기
                 val success = withContext(Dispatchers.IO) { client.waitWhatsAppLogin() }
                 if (success) {
+                    shouldRestartAfterWhatsAppPairing = true
                     _whatsappQrState.value = WhatsAppQrState.Connected
                     delay(3000)
                     _whatsappQrState.value = WhatsAppQrState.Idle
+                    restartGatewayIfRunning()
+                    shouldRestartAfterWhatsAppPairing = false
                 } else {
-                    _whatsappQrState.value = WhatsAppQrState.Error("Login timed out")
+                    val reason = client.getLastCallErrorMessage()
+                    val message = if (reason.isNullOrBlank()) {
+                        "Login timed out"
+                    } else {
+                        "Login failed: $reason"
+                    }
+                    _whatsappQrState.value = WhatsAppQrState.Error(message)
                 }
 
                 client.close()
@@ -286,6 +319,58 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
         wsClient?.close()
         wsClient = null
         _whatsappQrState.value = WhatsAppQrState.Idle
+        if (shouldRestartAfterWhatsAppPairing) {
+            restartGatewayIfRunning()
+            shouldRestartAfterWhatsAppPairing = false
+        }
+    }
+
+    fun retryBundleUpdate() {
+        if (_bundleActionInProgress.value) return
+        _bundleActionInProgress.value = true
+        _bundleActionMessage.value = null
+        viewModelScope.launch {
+            try {
+                val result = withContext(Dispatchers.IO) {
+                    app.setupManager.updateBundleIfNeededWithPolicy(manualRetry = true)
+                }
+                _bundleActionMessage.value = when (result.outcome) {
+                    BundleUpdateOutcome.UPDATED,
+                    BundleUpdateOutcome.SKIPPED_NOT_REQUIRED,
+                    -> getApplication<Application>().getString(R.string.dashboard_update_action_done)
+                    BundleUpdateOutcome.SKIPPED_MANUAL_RETRY_EXHAUSTED -> getApplication<Application>().getString(R.string.dashboard_update_action_manual_exhausted)
+                    BundleUpdateOutcome.SKIPPED_COOLDOWN -> getApplication<Application>().getString(R.string.dashboard_update_action_cooldown)
+                    BundleUpdateOutcome.FAILED -> result.errorMessage ?: getApplication<Application>().getString(R.string.dashboard_update_action_failed)
+                }
+            } finally {
+                refreshBundleUpdateFailure()
+                _bundleActionInProgress.value = false
+            }
+        }
+    }
+
+    fun recoverBundleInstall() {
+        if (_bundleActionInProgress.value) return
+        _bundleActionInProgress.value = true
+        _bundleActionMessage.value = null
+        viewModelScope.launch {
+            try {
+                val result = withContext(Dispatchers.IO) {
+                    app.setupManager.runRecoveryInstall()
+                }
+                _bundleActionMessage.value = when (result.outcome) {
+                    BundleUpdateOutcome.UPDATED,
+                    BundleUpdateOutcome.SKIPPED_NOT_REQUIRED,
+                    -> getApplication<Application>().getString(R.string.dashboard_update_recovery_done)
+                    BundleUpdateOutcome.SKIPPED_MANUAL_RETRY_EXHAUSTED -> getApplication<Application>().getString(R.string.dashboard_update_action_manual_exhausted)
+                    BundleUpdateOutcome.SKIPPED_COOLDOWN -> getApplication<Application>().getString(R.string.dashboard_update_action_cooldown)
+                    BundleUpdateOutcome.FAILED -> result.errorMessage ?: getApplication<Application>().getString(R.string.dashboard_update_recovery_failed)
+                }
+            } finally {
+                refreshBundleUpdateFailure()
+                _bundleActionInProgress.value = false
+            }
+        }
     }
 
     override fun onCleared() {
@@ -312,6 +397,14 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
         val runtime = Runtime.getRuntime()
         val usedMem = (runtime.totalMemory() - runtime.freeMemory()) / (1024 * 1024)
         _memoryUsageMb.value = usedMem
+    }
+
+    private suspend fun refreshBundleUpdateFailure() {
+        _bundleUpdateFailure.value = withContext(Dispatchers.IO) {
+            app.setupManager.getBundleUpdateFailureState()
+        }?.takeIf { failure ->
+            failure.failCountForCurrentVersion > 0 && failure.lastError?.isNotBlank() == true
+        }
     }
 }
 

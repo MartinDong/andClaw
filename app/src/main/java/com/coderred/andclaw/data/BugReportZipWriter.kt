@@ -133,6 +133,14 @@ object BugReportZipWriter {
             out.append('}')
         }
 
+        out.append("],")
+        out.append("\"gatewayLogs\":[")
+        bundle.gatewayLogs.forEachIndexed { index, line ->
+            if (index > 0) {
+                out.append(',')
+            }
+            appendJsonString(out, line)
+        }
         out.append(']')
         out.append('}')
         return out.toString()

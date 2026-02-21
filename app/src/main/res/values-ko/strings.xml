@@ -194,7 +194,8 @@
     <string name="settings_provider_openai_api">%1$s (API)</string>
     <string name="settings_provider_openai_codex">%1$s (Codex OAuth)</string>
     <string name="settings_api_type">API 유형</string>
-    <string name="settings_bot_token_dialog_title">%1$s Bot Token</string>    <string name="settings_bot_restart_notice_message">게이트웨이를 재시작합니다.</string>
+    <string name="settings_bot_token_dialog_title">%1$s Bot Token</string>
+    <string name="settings_bot_restart_notice_message">게이트웨이를 재시작합니다.</string>
     <string name="bug_report_title">버그 리포트 ZIP 생성</string>
     <string name="bug_report_last_file">마지막 파일: %1$s (%2$s)</string>
     <string name="bug_report_consent_required">동의 + 미리보기 필요</string>
@@ -215,9 +216,21 @@
     <string name="bug_report_close">닫기</string>
     <string name="bug_report_presence_present">있음</string>
     <string name="bug_report_presence_none">없음</string>
+    <string name="dashboard_update_failed_title">에셋 업데이트 실패</string>
+    <string name="dashboard_update_failed_reason">원인 (%1$s): %2$s</string>
+    <string name="dashboard_update_failed_cooldown">자동 재시도가 일시 중지됨. 남은 쿨다운: %1$d분</string>
+    <string name="dashboard_update_failed_last_at">마지막 실패: %1$s</string>
+    <string name="dashboard_update_action_retry">다시 시도</string>
+    <string name="dashboard_update_action_recover">복구 설치</string>
+    <string name="dashboard_update_action_done">업데이트 완료</string>
+    <string name="dashboard_update_action_failed">업데이트 실패</string>
+    <string name="dashboard_update_recovery_done">복구 완료</string>
+    <string name="dashboard_update_recovery_failed">복구 실패</string>
+    <string name="dashboard_update_action_cooldown">자동 재시도가 쿨다운 중임</string>
+    <string name="dashboard_update_action_manual_exhausted">쿨다운 중 수동 재시도를 이미 사용함</string>
+    <string name="settings_api_key_get_link">%1$s API 키 발급 →</string>
+    <string name="bug_report_included_gateway_logs">- 게이트웨이 UI 로그(정리됨): %1$d줄</string>
 </resources>
-
-
 
 
 

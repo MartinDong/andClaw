@@ -5,8 +5,10 @@ import android.content.Context
 import android.content.Intent
 import com.coderred.andclaw.data.PreferencesManager
 import com.coderred.andclaw.service.GatewayService
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.launch
 
 /**
  * 앱 업데이트 후 게이트웨이 자동 재시작.
@@ -17,14 +19,17 @@ class UpdateReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action != Intent.ACTION_MY_PACKAGE_REPLACED) return
 
-        val prefs = PreferencesManager(context)
-
-        val shouldRestart = runBlocking {
-            prefs.gatewayWasRunning.first() && prefs.isSetupComplete.first()
-        }
-
-        if (shouldRestart) {
-            GatewayService.start(context)
+        val pendingResult = goAsync()
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                val prefs = PreferencesManager(context)
+                val shouldRestart = prefs.gatewayWasRunning.first() && prefs.isSetupComplete.first()
+                if (shouldRestart) {
+                    GatewayService.start(context)
+                }
+            } finally {
+                pendingResult.finish()
+            }
         }
     }
 }

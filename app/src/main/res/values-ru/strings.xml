@@ -206,8 +206,21 @@
     <string name="bug_report_close">Закрыть</string>
     <string name="bug_report_presence_present">есть</string>
     <string name="bug_report_presence_none">нет</string>
+    <string name="dashboard_update_failed_title">Ошибка обновления ресурсов</string>
+    <string name="dashboard_update_failed_reason">Причина (%1$s): %2$s</string>
+    <string name="dashboard_update_failed_cooldown">Автоповтор приостановлен. Осталось до конца кулдауна: %1$d мин</string>
+    <string name="dashboard_update_failed_last_at">Последняя ошибка: %1$s</string>
+    <string name="dashboard_update_action_retry">Повторить</string>
+    <string name="dashboard_update_action_recover">Восстановительная установка</string>
+    <string name="dashboard_update_action_done">Обновление завершено</string>
+    <string name="dashboard_update_action_failed">Ошибка обновления</string>
+    <string name="dashboard_update_recovery_done">Восстановление завершено</string>
+    <string name="dashboard_update_recovery_failed">Ошибка восстановления</string>
+    <string name="dashboard_update_action_cooldown">Автоповтор сейчас на кулдауне</string>
+    <string name="dashboard_update_action_manual_exhausted">Ручной повтор уже использован во время кулдауна</string>
+    <string name="settings_api_key_get_link">Получить API-ключ %1$s →</string>
+    <string name="bug_report_included_gateway_logs">- Логи UI шлюза (очищенные): %1$d строк</string>
 </resources>
-
 
 
 

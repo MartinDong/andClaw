@@ -218,8 +218,21 @@
     <string name="bug_report_close">Cerrar</string>
     <string name="bug_report_presence_present">presente</string>
     <string name="bug_report_presence_none">ninguno</string>
+    <string name="dashboard_update_failed_title">Falló la actualización de recursos</string>
+    <string name="dashboard_update_failed_reason">Motivo (%1$s): %2$s</string>
+    <string name="dashboard_update_failed_cooldown">Reintento automático en pausa. Enfriamiento restante: %1$d min</string>
+    <string name="dashboard_update_failed_last_at">Último fallo: %1$s</string>
+    <string name="dashboard_update_action_retry">Reintentar</string>
+    <string name="dashboard_update_action_recover">Instalación de recuperación</string>
+    <string name="dashboard_update_action_done">Actualización completada</string>
+    <string name="dashboard_update_action_failed">Actualización fallida</string>
+    <string name="dashboard_update_recovery_done">Recuperación completada</string>
+    <string name="dashboard_update_recovery_failed">Recuperación fallida</string>
+    <string name="dashboard_update_action_cooldown">El reintento automático está en enfriamiento</string>
+    <string name="dashboard_update_action_manual_exhausted">El reintento manual ya se usó durante el enfriamiento</string>
+    <string name="settings_api_key_get_link">Obtener clave API de %1$s →</string>
+    <string name="bug_report_included_gateway_logs">- Registros de UI del gateway (depurados): %1$d líneas</string>
 </resources>
-
 
 
 

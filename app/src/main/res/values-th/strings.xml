@@ -206,8 +206,21 @@
     <string name="bug_report_close">ปิด</string>
     <string name="bug_report_presence_present">มี</string>
     <string name="bug_report_presence_none">ไม่มี</string>
+    <string name="dashboard_update_failed_title">การอัปเดตทรัพยากรล้มเหลว</string>
+    <string name="dashboard_update_failed_reason">สาเหตุ (%1$s): %2$s</string>
+    <string name="dashboard_update_failed_cooldown">หยุดการลองใหม่อัตโนมัติชั่วคราว คูลดาวน์คงเหลือ: %1$d นาที</string>
+    <string name="dashboard_update_failed_last_at">ล้มเหลวล่าสุด: %1$s</string>
+    <string name="dashboard_update_action_retry">ลองใหม่</string>
+    <string name="dashboard_update_action_recover">ติดตั้งเพื่อกู้คืน</string>
+    <string name="dashboard_update_action_done">อัปเดตเสร็จสิ้น</string>
+    <string name="dashboard_update_action_failed">อัปเดตล้มเหลว</string>
+    <string name="dashboard_update_recovery_done">กู้คืนเสร็จสิ้น</string>
+    <string name="dashboard_update_recovery_failed">กู้คืนล้มเหลว</string>
+    <string name="dashboard_update_action_cooldown">การลองใหม่อัตโนมัติอยู่ในคูลดาวน์</string>
+    <string name="dashboard_update_action_manual_exhausted">ใช้การลองใหม่แบบแมนนวลในคูลดาวน์ไปแล้ว</string>
+    <string name="settings_api_key_get_link">รับคีย์ API ของ %1$s →</string>
+    <string name="bug_report_included_gateway_logs">- บันทึก UI ของเกตเวย์ (ลบข้อมูลสำคัญแล้ว): %1$d บรรทัด</string>
 </resources>
-
 
 
 

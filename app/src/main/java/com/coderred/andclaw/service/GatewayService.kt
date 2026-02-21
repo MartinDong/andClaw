@@ -16,9 +16,12 @@ import com.coderred.andclaw.MainActivity
 import com.coderred.andclaw.R
 import com.coderred.andclaw.data.GatewayStatus
 import com.coderred.andclaw.data.PreferencesManager
+import com.coderred.andclaw.proot.BundleUpdateOutcome
 import com.coderred.andclaw.proot.ProcessManager
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import com.coderred.andclaw.data.PairingRequest
@@ -26,7 +29,7 @@ import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
 
 class GatewayService : Service() {
 
@@ -68,6 +71,7 @@ class GatewayService : Service() {
     private lateinit var prefs: PreferencesManager
     private var wakeLock: PowerManager.WakeLock? = null
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+    private var actionJob: Job? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -111,42 +115,60 @@ class GatewayService : Service() {
         when (intent?.action) {
             ACTION_START -> {
                 acquireWakeLock()
-                // 번들 업데이트 체크 (앱 업데이트 후 첫 실행 시)
-                val app = application as AndClawApp
-                app.setupManager.updateBundleIfNeeded()
-                // DataStore에서 API 설정 읽기
-                val apiProvider = runBlocking { prefs.apiProvider.first() }
-                val apiKey = runBlocking { prefs.apiKey.first() }
-                val selectedModel = runBlocking { prefs.selectedModel.first() }
-                val channelConfig = runBlocking { prefs.channelConfig.first() }
-                val modelReasoning = runBlocking { prefs.selectedModelReasoning.first() }
-                val modelImages = runBlocking { prefs.selectedModelImages.first() }
-                val modelContext = runBlocking { prefs.selectedModelContext.first() }
-                val modelMaxOutput = runBlocking { prefs.selectedModelMaxOutput.first() }
-                val braveSearchApiKey = runBlocking { prefs.braveSearchApiKey.first() }
-                pm.start(apiProvider, apiKey, selectedModel, channelConfig, modelReasoning, modelImages, modelContext, modelMaxOutput, braveSearchApiKey)
-                // 게이트웨이 실행 상태 기록 (앱 업데이트 후 자동 재시작용)
-                runBlocking { prefs.setGatewayWasRunning(true) }
+                actionJob?.cancel()
+                actionJob = serviceScope.launch(Dispatchers.IO) {
+                    val app = application as AndClawApp
+                    try {
+                        val result = app.setupManager.updateBundleIfNeededWithPolicy()
+                        if (result.outcome == BundleUpdateOutcome.FAILED) {
+                            android.util.Log.e("GatewayService", "Bundle update policy run failed: ${result.errorMessage}")
+                        }
+                    } catch (error: CancellationException) {
+                        throw error
+                    } catch (error: Exception) {
+                        android.util.Log.e("GatewayService", "Bundle update failed during ACTION_START", error)
+                    }
+
+                    val apiProvider = prefs.apiProvider.first()
+                    val apiKey = prefs.apiKey.first()
+                    val selectedModel = prefs.selectedModel.first()
+                    val channelConfig = prefs.channelConfig.first()
+                    val modelReasoning = prefs.selectedModelReasoning.first()
+                    val modelImages = prefs.selectedModelImages.first()
+                    val modelContext = prefs.selectedModelContext.first()
+                    val modelMaxOutput = prefs.selectedModelMaxOutput.first()
+                    val braveSearchApiKey = prefs.braveSearchApiKey.first()
+
+                    pm.start(apiProvider, apiKey, selectedModel, channelConfig, modelReasoning, modelImages, modelContext, modelMaxOutput, braveSearchApiKey)
+                    prefs.setGatewayWasRunning(true)
+                }
             }
             ACTION_STOP -> {
-                pm.stop()
-                releaseWakeLock()
-                stopForeground(STOP_FOREGROUND_REMOVE)
-                stopSelf()
-                // 사용자가 명시적으로 중지 → 업데이트 후 자동 재시작 안 함
-                runBlocking { prefs.setGatewayWasRunning(false) }
+                actionJob?.cancel()
+                actionJob = serviceScope.launch(Dispatchers.IO) {
+                    pm.stop()
+                    prefs.setGatewayWasRunning(false)
+                    withContext(Dispatchers.Main) {
+                        releaseWakeLock()
+                        stopForeground(STOP_FOREGROUND_REMOVE)
+                        stopSelf()
+                    }
+                }
             }
             ACTION_RESTART -> {
-                val apiProvider = runBlocking { prefs.apiProvider.first() }
-                val apiKey = runBlocking { prefs.apiKey.first() }
-                val selectedModel = runBlocking { prefs.selectedModel.first() }
-                val channelConfig = runBlocking { prefs.channelConfig.first() }
-                val modelReasoning = runBlocking { prefs.selectedModelReasoning.first() }
-                val modelImages = runBlocking { prefs.selectedModelImages.first() }
-                val modelContext = runBlocking { prefs.selectedModelContext.first() }
-                val modelMaxOutput = runBlocking { prefs.selectedModelMaxOutput.first() }
-                val braveSearchApiKey = runBlocking { prefs.braveSearchApiKey.first() }
-                pm.restart(apiProvider, apiKey, selectedModel, channelConfig, modelReasoning, modelImages, modelContext, modelMaxOutput, braveSearchApiKey)
+                actionJob?.cancel()
+                actionJob = serviceScope.launch(Dispatchers.IO) {
+                    val apiProvider = prefs.apiProvider.first()
+                    val apiKey = prefs.apiKey.first()
+                    val selectedModel = prefs.selectedModel.first()
+                    val channelConfig = prefs.channelConfig.first()
+                    val modelReasoning = prefs.selectedModelReasoning.first()
+                    val modelImages = prefs.selectedModelImages.first()
+                    val modelContext = prefs.selectedModelContext.first()
+                    val modelMaxOutput = prefs.selectedModelMaxOutput.first()
+                    val braveSearchApiKey = prefs.braveSearchApiKey.first()
+                    pm.restart(apiProvider, apiKey, selectedModel, channelConfig, modelReasoning, modelImages, modelContext, modelMaxOutput, braveSearchApiKey)
+                }
             }
         }
         return START_STICKY

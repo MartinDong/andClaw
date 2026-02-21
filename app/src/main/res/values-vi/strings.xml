@@ -206,8 +206,21 @@
     <string name="bug_report_close">Đóng</string>
     <string name="bug_report_presence_present">có</string>
     <string name="bug_report_presence_none">không</string>
+    <string name="dashboard_update_failed_title">Cập nhật tài nguyên thất bại</string>
+    <string name="dashboard_update_failed_reason">Lý do (%1$s): %2$s</string>
+    <string name="dashboard_update_failed_cooldown">Tự động thử lại đang tạm dừng. Thời gian chờ còn lại: %1$d phút</string>
+    <string name="dashboard_update_failed_last_at">Lần lỗi gần nhất: %1$s</string>
+    <string name="dashboard_update_action_retry">Thử lại</string>
+    <string name="dashboard_update_action_recover">Cài đặt khôi phục</string>
+    <string name="dashboard_update_action_done">Cập nhật hoàn tất</string>
+    <string name="dashboard_update_action_failed">Cập nhật thất bại</string>
+    <string name="dashboard_update_recovery_done">Khôi phục hoàn tất</string>
+    <string name="dashboard_update_recovery_failed">Khôi phục thất bại</string>
+    <string name="dashboard_update_action_cooldown">Tự động thử lại đang trong thời gian chờ</string>
+    <string name="dashboard_update_action_manual_exhausted">Đã dùng thử lại thủ công trong thời gian chờ</string>
+    <string name="settings_api_key_get_link">Lấy khóa API %1$s →</string>
+    <string name="bug_report_included_gateway_logs">- Nhật ký UI gateway (đã làm sạch): %1$d dòng</string>
 </resources>
-
 
 
 

@@ -43,6 +43,7 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.Timer
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -91,12 +92,15 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.coderred.andclaw.R
 import com.coderred.andclaw.data.GatewayStatus
+import com.coderred.andclaw.proot.BundleUpdateFailureState
 import com.coderred.andclaw.ui.component.ModelSelectionDialog
 import com.coderred.andclaw.ui.component.SessionLogsDialog
 import com.coderred.andclaw.ui.theme.StatusError
 import com.coderred.andclaw.ui.theme.StatusRunning
 import com.coderred.andclaw.ui.theme.StatusStopped
 import com.coderred.andclaw.ui.theme.StatusWarning
+import java.text.DateFormat
+import java.util.Date
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -112,12 +116,16 @@ fun DashboardScreen(
     val apiProvider by viewModel.apiProvider.collectAsState()
     val apiKey by viewModel.apiKey.collectAsState()
     val selectedModel by viewModel.selectedModel.collectAsState()
+    val isLogSectionUnlocked by viewModel.isLogSectionUnlocked.collectAsState()
     val availableModels by viewModel.availableModels.collectAsState()
     val isLoadingModels by viewModel.isLoadingModels.collectAsState()
     val modelLoadError by viewModel.modelLoadError.collectAsState()
     val pairingRequests by viewModel.pairingRequests.collectAsState()
     val sessionLogs by viewModel.sessionLogs.collectAsState()
     val isLoadingSessionLogs by viewModel.isLoadingSessionLogs.collectAsState()
+    val bundleUpdateFailure by viewModel.bundleUpdateFailure.collectAsState()
+    val bundleActionInProgress by viewModel.bundleActionInProgress.collectAsState()
+    val bundleActionMessage by viewModel.bundleActionMessage.collectAsState()
     val context = LocalContext.current
 
     var showModelDialog by remember { mutableStateOf(false) }
@@ -209,6 +217,16 @@ fun DashboardScreen(
                     )
                 }
 
+                bundleUpdateFailure?.let { failure ->
+                    BundleUpdateFailureBanner(
+                        failure = failure,
+                        inProgress = bundleActionInProgress,
+                        actionMessage = bundleActionMessage,
+                        onRetry = { viewModel.retryBundleUpdate() },
+                        onRecover = { viewModel.recoverBundleInstall() },
+                    )
+                }
+
                 // ── Pairing Requests ──
                 if (pairingRequests.isNotEmpty()) {
                     PairingRequestsCard(
@@ -226,17 +244,19 @@ fun DashboardScreen(
                     isCharging = isCharging,
                 )
 
-                // ── Logs ──
-                LogSection(
-                    logLines = logLines,
-                    expanded = logsExpanded,
-                    onToggle = { logsExpanded = !logsExpanded },
-                    listState = logListState,
-                    onShowSessionLogs = {
-                        showSessionLogs = true
-                        viewModel.loadSessionLogs()
-                    },
-                )
+                if (isLogSectionUnlocked) {
+                    // ── Logs ──
+                    LogSection(
+                        logLines = logLines,
+                        expanded = logsExpanded,
+                        onToggle = { logsExpanded = !logsExpanded },
+                        listState = logListState,
+                        onShowSessionLogs = {
+                            showSessionLogs = true
+                            viewModel.loadSessionLogs()
+                        },
+                    )
+                }
 
                 Spacer(modifier = Modifier.height(8.dp))
             }
@@ -286,6 +306,99 @@ fun DashboardScreen(
                 }
             },
         )
+    }
+}
+
+@Composable
+private fun BundleUpdateFailureBanner(
+    failure: BundleUpdateFailureState,
+    inProgress: Boolean,
+    actionMessage: String?,
+    onRetry: () -> Unit,
+    onRecover: () -> Unit,
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.55f),
+        ),
+        shape = RoundedCornerShape(16.dp),
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Icon(
+                    Icons.Default.Warning,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.size(20.dp),
+                )
+                Text(
+                    text = stringResource(R.string.dashboard_update_failed_title),
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                )
+            }
+            Text(
+                text = stringResource(
+                    R.string.dashboard_update_failed_reason,
+                    failure.lastFailureType ?: "UNKNOWN",
+                    failure.lastError ?: stringResource(R.string.notification_unknown),
+                ),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onErrorContainer,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+            if (failure.inCooldown) {
+                Text(
+                    text = stringResource(
+                        R.string.dashboard_update_failed_cooldown,
+                        ((failure.cooldownRemainingMs / 60000L).coerceAtLeast(0L)).toInt(),
+                    ),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onErrorContainer,
+                )
+            }
+            failure.lastFailAtEpochMs?.let { failedAt ->
+                Text(
+                    text = stringResource(
+                        R.string.dashboard_update_failed_last_at,
+                        DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(Date(failedAt)),
+                    ),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onErrorContainer,
+                )
+            }
+            actionMessage?.takeIf { it.isNotBlank() }?.let { message ->
+                Text(
+                    text = message,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onErrorContainer,
+                )
+            }
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                FilledTonalButton(
+                    onClick = onRetry,
+                    enabled = !inProgress,
+                ) {
+                    Text(stringResource(R.string.dashboard_update_action_retry))
+                }
+                OutlinedButton(
+                    onClick = onRecover,
+                    enabled = !inProgress,
+                ) {
+                    Text(stringResource(R.string.dashboard_update_action_recover))
+                }
+            }
+        }
     }
 }
 
@@ -932,4 +1045,3 @@ private fun PairingRequestItem(
         }
     }
 }
-

@@ -21,7 +21,7 @@ class AndClawApp : Application() {
         super.onCreate()
         preferencesManager = PreferencesManager(this)
         prootManager = ProotManager(this)
-        setupManager = SetupManager(this, prootManager)
+        setupManager = SetupManager(this, prootManager, preferencesManager)
         processManager = ProcessManager(prootManager)
     }
 }

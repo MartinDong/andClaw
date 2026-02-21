@@ -212,8 +212,21 @@
     <string name="bug_report_close">Schließen</string>
     <string name="bug_report_presence_present">vorhanden</string>
     <string name="bug_report_presence_none">keine</string>
+    <string name="dashboard_update_failed_title">Asset-Aktualisierung fehlgeschlagen</string>
+    <string name="dashboard_update_failed_reason">Grund (%1$s): %2$s</string>
+    <string name="dashboard_update_failed_cooldown">Automatische Wiederholung pausiert. Verbleibender Cooldown: %1$d Min.</string>
+    <string name="dashboard_update_failed_last_at">Zuletzt fehlgeschlagen: %1$s</string>
+    <string name="dashboard_update_action_retry">Erneut versuchen</string>
+    <string name="dashboard_update_action_recover">Wiederherstellungsinstallation</string>
+    <string name="dashboard_update_action_done">Aktualisierung abgeschlossen</string>
+    <string name="dashboard_update_action_failed">Aktualisierung fehlgeschlagen</string>
+    <string name="dashboard_update_recovery_done">Wiederherstellung abgeschlossen</string>
+    <string name="dashboard_update_recovery_failed">Wiederherstellung fehlgeschlagen</string>
+    <string name="dashboard_update_action_cooldown">Automatische Wiederholung ist im Cooldown</string>
+    <string name="dashboard_update_action_manual_exhausted">Manuelle Wiederholung im Cooldown bereits verwendet</string>
+    <string name="settings_api_key_get_link">%1$s API-Schlüssel erhalten →</string>
+    <string name="bug_report_included_gateway_logs">- Gateway-UI-Protokolle (bereinigt): %1$d Zeilen</string>
 </resources>
-
 
 
 

@@ -6,7 +6,7 @@ import android.os.Bundle
 import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.activity.enableEdgeToEdge
+import androidx.core.view.WindowCompat
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -28,11 +28,14 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.navigation.compose.rememberNavController
 import com.coderred.andclaw.auth.OpenRouterAuth
+import com.coderred.andclaw.proot.BundleUpdateOutcome
 import com.coderred.andclaw.data.SetupStep
 import com.coderred.andclaw.ui.navigation.AndClawNavGraph
 import com.coderred.andclaw.ui.theme.AndClawTheme
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 
 private enum class StartupBundleUpdateStatus {
     CHECKING,
@@ -46,7 +49,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
+        WindowCompat.setDecorFitsSystemWindows(window, false)
 
         handleDeepLink(intent)
 
@@ -90,7 +93,9 @@ class MainActivity : ComponentActivity() {
 
                         startupUpdateStatus = StartupBundleUpdateStatus.CHECKING
                         val needsBundleUpdate = withContext(Dispatchers.IO) {
-                            app.setupManager.isBundleUpdateRequired()
+                            withTimeoutOrNull(30_000L) {
+                                app.setupManager.isBundleUpdateRequired()
+                            } ?: false
                         }
 
                         if (!needsBundleUpdate) {
@@ -101,15 +106,18 @@ class MainActivity : ComponentActivity() {
                         startupUpdateStatus = StartupBundleUpdateStatus.UPDATING
                         startupUpdateStep = SetupStep.INSTALLING_TOOLS
 
-                        runCatching {
-                            withContext(Dispatchers.IO) {
-                                app.setupManager.updateBundleIfNeeded { step ->
-                                    runOnUiThread {
-                                        startupUpdateStep = step
-                                    }
-                                }
+                        try {
+                            val result = withContext(Dispatchers.IO) {
+                                app.setupManager.updateBundleIfNeededWithPolicy(onStepChanged = { step ->
+                                    runOnUiThread { startupUpdateStep = step }
+                                })
                             }
-                        }.onFailure { error ->
+                            if (result.outcome == BundleUpdateOutcome.FAILED) {
+                                Log.e("MainActivity", "Bundle update policy run failed: ${result.errorMessage}")
+                            }
+                        } catch (error: CancellationException) {
+                            throw error
+                        } catch (error: Exception) {
                             Log.e("MainActivity", "Failed to update bundled assets on startup", error)
                         }
 

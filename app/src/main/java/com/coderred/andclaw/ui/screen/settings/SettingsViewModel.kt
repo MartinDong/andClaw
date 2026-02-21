@@ -44,6 +44,7 @@ import java.net.InetAddress
 import java.net.HttpURLConnection
 import java.net.ServerSocket
 import java.net.SocketTimeoutException
+import java.net.UnknownHostException
 import java.net.URL
 import java.net.URLDecoder
 import java.security.MessageDigest
@@ -60,6 +61,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         val sessionErrorCount: Int = 0,
         val hasGatewayError: Boolean = false,
         val hasProcessError: Boolean = false,
+        val gatewayLogCount: Int = 0,
     )
 
     data class BugReportArtifactInfo(
@@ -81,10 +83,12 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         private const val TAG = "AndClawCodexAuth"
         private const val OAUTH_CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann"
         private const val OAUTH_AUTHORIZE_URL = "https://auth.openai.com/oauth/authorize"
-        private const val OAUTH_TOKEN_URL = "https://auth.openai.com/oauth/token"
+        private const val OAUTH_TOKEN_URL_PRIMARY = "https://auth.openai.com/oauth/token"
         private const val OAUTH_REDIRECT_URI = "http://localhost:1455/auth/callback"
         private const val OAUTH_SCOPE = "openid profile email offline_access"
         private const val OAUTH_JWT_CLAIM_PATH = "https://api.openai.com/auth"
+        private const val LOG_UNLOCK_TAP_COUNT = 7
+        private const val LOG_UNLOCK_TAP_WINDOW_MS = 2000L
         private const val OPENCLAW_BUILTIN_MODELS_PATH =
             "usr/local/lib/node_modules/openclaw/node_modules/@mariozechner/pi-ai/dist/models.generated.js"
     }
@@ -112,6 +116,9 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
 
     val braveSearchApiKey: StateFlow<String> = prefs.braveSearchApiKey
         .stateIn(viewModelScope, SharingStarted.Eagerly, "")
+
+    val isLogSectionUnlocked: StateFlow<Boolean> = prefs.logSectionUnlocked
+        .stateIn(viewModelScope, SharingStarted.Eagerly, false)
 
     val whatsappEnabled: StateFlow<Boolean> = prefs.whatsappEnabled
         .stateIn(viewModelScope, SharingStarted.Eagerly, true)
@@ -163,6 +170,9 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
 
     private var wsClient: GatewayWsClient? = null
     private var whatsappQrJob: Job? = null
+    private var shouldRestartAfterWhatsAppPairing: Boolean = false
+    private var logUnlockTapCount: Int = 0
+    private var lastLogUnlockTapAtMs: Long = 0L
 
     init {
         viewModelScope.launch(Dispatchers.IO) {
@@ -179,6 +189,24 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
 
     fun setChargeOnlyMode(enabled: Boolean) {
         viewModelScope.launch { prefs.setChargeOnlyMode(enabled) }
+    }
+
+    fun onVersionInfoTapped() {
+        if (isLogSectionUnlocked.value) return
+
+        val now = System.currentTimeMillis()
+        if (now - lastLogUnlockTapAtMs > LOG_UNLOCK_TAP_WINDOW_MS) {
+            logUnlockTapCount = 0
+        }
+        lastLogUnlockTapAtMs = now
+        logUnlockTapCount += 1
+
+        if (logUnlockTapCount >= LOG_UNLOCK_TAP_COUNT) {
+            logUnlockTapCount = 0
+            viewModelScope.launch {
+                prefs.setLogSectionUnlocked(true)
+            }
+        }
     }
 
     fun setApiProvider(provider: String) {
@@ -274,8 +302,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         if (_isDoctorFixRunning.value) return
         viewModelScope.launch(Dispatchers.IO) {
             _isDoctorFixRunning.value = true
-            val command = ". /root/.profile && " +
-                "export NODE_OPTIONS='--require /root/.openclaw-patch.js' && " +
+            val command = "export NODE_OPTIONS='--require /root/.openclaw-patch.js' && " +
                 "openclaw doctor --fix 2>&1"
             val result = prootManager.executeWithResult(command, timeoutMs = 300_000)
             _doctorFixResult.value = when {
@@ -305,7 +332,8 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
             val previewResult = runCatching {
                 val sessionEntries = processManager.getSessionLogEntries()
                 val gatewayErrorMessage = processManager.gatewayState.value.errorMessage
-                buildBugReportPreview(sessionEntries, gatewayErrorMessage)
+                val gatewayLogLines = processManager.logLines.value
+                buildBugReportPreview(sessionEntries, gatewayErrorMessage, gatewayLogLines)
             }
 
             val preview = previewResult.getOrElse { BugReportPreview() }
@@ -356,9 +384,11 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
                 val context = getApplication<Application>()
                 val sessionEntries = processManager.getSessionLogEntries()
                 val gatewayErrorMessage = processManager.gatewayState.value.errorMessage
+                val gatewayLogLines = processManager.logLines.value
                 val metadata = BugReportBundleBuilder.collectMetadata(context)
                 val bundle = BugReportBundleBuilder.build(
                     sessionEntries = sessionEntries,
+                    gatewayLogLines = gatewayLogLines,
                     metadata = metadata,
                     gatewayErrorMessage = gatewayErrorMessage,
                     processErrorMessage = gatewayErrorMessage,
@@ -368,7 +398,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
                     fileName = artifact.file.name,
                     sizeBytes = artifact.file.length(),
                 )
-                val preview = buildBugReportPreview(sessionEntries, gatewayErrorMessage)
+                val preview = buildBugReportPreview(sessionEntries, gatewayErrorMessage, gatewayLogLines)
 
                 withContext(Dispatchers.Main) {
                     _bugReportUiState.value = _bugReportUiState.value.copy(
@@ -380,6 +410,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
                     )
                 }
             } catch (e: Exception) {
+                if (e is kotlinx.coroutines.CancellationException) throw e
                 withContext(Dispatchers.Main) {
                     _bugReportUiState.value = _bugReportUiState.value.copy(
                         isGenerating = false,
@@ -390,11 +421,17 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
-    private fun buildBugReportPreview(sessionEntries: List<SessionLogEntry>, gatewayErrorMessage: String?): BugReportPreview {
+    private fun buildBugReportPreview(
+        sessionEntries: List<SessionLogEntry>,
+        gatewayErrorMessage: String?,
+        gatewayLogLines: List<String>,
+    ): BugReportPreview {
+        val includedGatewayLogCount = BugReportBundleBuilder.sanitizeGatewayLogLines(gatewayLogLines).size
         return BugReportPreview(
             sessionErrorCount = sessionEntries.count { it.isSessionError() },
             hasGatewayError = !gatewayErrorMessage.isNullOrBlank(),
             hasProcessError = !gatewayErrorMessage.isNullOrBlank(),
+            gatewayLogCount = includedGatewayLogCount,
         )
     }
 
@@ -489,6 +526,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
                 }
                 _availableModels.value = models
             } catch (e: Exception) {
+                if (e is kotlinx.coroutines.CancellationException) throw e
                 _modelLoadError.value = e.message
             } finally {
                 _isLoadingModels.value = false
@@ -517,6 +555,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
                     _modelLoadError.value = "No built-in models found."
                 }
             } catch (e: Exception) {
+                if (e is kotlinx.coroutines.CancellationException) throw e
                 _availableModels.value = emptyList()
                 _modelLoadError.value = e.message ?: "Failed to load built-in models."
             } finally {
@@ -797,6 +836,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
 
                 runCodexDirectPkceLogin()
             } catch (e: Exception) {
+                if (e is kotlinx.coroutines.CancellationException) throw e
                 Log.e(TAG, "Codex OAuth failed: ${e.message}", e)
                 _codexAuthDebugLine.value = e.message
             } finally {
@@ -820,7 +860,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         val expires: Long,
     )
 
-    private fun runCodexDirectPkceLogin() {
+    private suspend fun runCodexDirectPkceLogin() {
         val flow = createAuthorizationFlow()
         _codexAuthUrl.value = flow.url
         Log.i(TAG, "Detected auth URL: ${flow.url}")
@@ -1029,8 +1069,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
             }
 
             // CLI 상태 조회 (느린 편이라 마지막 fallback)
-            val authListCommand = ". /root/.profile && " +
-                "export NODE_OPTIONS='--require /root/.openclaw-patch.js' && " +
+            val authListCommand = "export NODE_OPTIONS='--require /root/.openclaw-patch.js' && " +
                 "openclaw models auth list --provider openai-codex 2>&1"
             val authListOutput = prootManager.executeAndCapture(authListCommand)
             if (!authListOutput.isNullOrBlank()) {
@@ -1045,8 +1084,31 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
-    private fun exchangeAuthorizationCode(code: String, verifier: String): OAuthTokenResult {
-        val conn = URL(OAUTH_TOKEN_URL).openConnection() as HttpURLConnection
+    private suspend fun exchangeAuthorizationCode(code: String, verifier: String): OAuthTokenResult {
+        var lastError: Exception? = null
+
+        for (attempt in 0..7) {
+            try {
+                return exchangeAuthorizationCodeOnce(OAUTH_TOKEN_URL_PRIMARY, code, verifier)
+            } catch (e: Exception) {
+                lastError = e
+                val retryable = e is UnknownHostException || e is SocketTimeoutException
+                if (!retryable || attempt >= 7) break
+                val backoffMs = 500L * (attempt + 1)
+                Log.w(TAG, "Token exchange retry after ${backoffMs}ms (${e.javaClass.simpleName})")
+                delay(backoffMs)
+            }
+        }
+
+        throw lastError ?: IllegalStateException("Token exchange failed")
+    }
+
+    private fun exchangeAuthorizationCodeOnce(
+        tokenUrl: String,
+        code: String,
+        verifier: String,
+    ): OAuthTokenResult {
+        val conn = URL(tokenUrl).openConnection() as HttpURLConnection
         return try {
             conn.requestMethod = "POST"
             conn.connectTimeout = 15_000
@@ -1070,7 +1132,8 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
                 .orEmpty()
 
             if (status !in 200..299) {
-                throw IllegalStateException("Token exchange failed: HTTP $status")
+                val reason = raw.take(240)
+                throw IllegalStateException("Token exchange failed: HTTP $status ${if (reason.isNotBlank()) "- $reason" else ""}".trim())
             }
 
             val json = JSONObject(raw)
@@ -1249,23 +1312,22 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
 
     fun startWhatsAppQr() {
         whatsappQrJob?.cancel()
+        shouldRestartAfterWhatsAppPairing = false
         _whatsappQrState.value = WhatsAppQrState.Loading
         whatsappQrJob = viewModelScope.launch {
             try {
                 val client = GatewayWsClient(prootManager)
                 wsClient = client
 
-                val connected = withContext(Dispatchers.IO) { client.connect() }
-                if (!connected) {
-                    _whatsappQrState.value = WhatsAppQrState.Error("Gateway not connected")
-                    client.close()
-                    wsClient = null
-                    return@launch
-                }
-
                 val qrData = withContext(Dispatchers.IO) { client.startWhatsAppLogin() }
                 if (qrData == null) {
-                    _whatsappQrState.value = WhatsAppQrState.Error("Failed to get QR code")
+                    val reason = client.getLastCallErrorMessage()
+                    val message = if (reason.isNullOrBlank()) {
+                        "Failed to get QR code"
+                    } else {
+                        "Failed to get QR code: $reason"
+                    }
+                    _whatsappQrState.value = WhatsAppQrState.Error(message)
                     client.close()
                     wsClient = null
                     return@launch
@@ -1276,17 +1338,25 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
 
                 val success = withContext(Dispatchers.IO) { client.waitWhatsAppLogin() }
                 if (success) {
+                    shouldRestartAfterWhatsAppPairing = true
                     _whatsappQrState.value = WhatsAppQrState.Connected
                     delay(3000)
                     _whatsappQrState.value = WhatsAppQrState.Idle
+                    // 페어링 완료 후 채널 설정 반영
+                    restartGatewayIfRunning()
+                    shouldRestartAfterWhatsAppPairing = false
                 } else {
-                    _whatsappQrState.value = WhatsAppQrState.Error("Login timed out")
+                    val reason = client.getLastCallErrorMessage()
+                    val message = if (reason.isNullOrBlank()) {
+                        "Login timed out"
+                    } else {
+                        "Login failed: $reason"
+                    }
+                    _whatsappQrState.value = WhatsAppQrState.Error(message)
                 }
 
                 client.close()
                 wsClient = null
-                // 페어링 완료 후 채널 설정 반영
-                restartGatewayIfRunning()
             } catch (e: Exception) {
                 if (e is kotlinx.coroutines.CancellationException) throw e
                 _whatsappQrState.value = WhatsAppQrState.Error(e.message ?: "Unknown error")
@@ -1302,8 +1372,11 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         wsClient?.close()
         wsClient = null
         _whatsappQrState.value = WhatsAppQrState.Idle
-        // 다이얼로그 닫을 때 채널 설정 반영
-        restartGatewayIfRunning()
+        // 페어링 완료가 확인된 경우에만 재시작한다.
+        if (shouldRestartAfterWhatsAppPairing) {
+            restartGatewayIfRunning()
+            shouldRestartAfterWhatsAppPairing = false
+        }
     }
 
     override fun onCleared() {

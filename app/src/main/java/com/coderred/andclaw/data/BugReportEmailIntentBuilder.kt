@@ -12,6 +12,7 @@ data class BugReportEmailSummary(
     val sessionErrorCount: Int,
     val hasGatewayError: Boolean,
     val hasProcessError: Boolean,
+    val gatewayLogCount: Int,
 )
 
 data class BugReportEmailMetadata(
@@ -61,6 +62,7 @@ object BugReportEmailIntentBuilder {
             appendLine("- Session error count: ${summary.sessionErrorCount}")
             appendLine("- Gateway error present: ${summary.hasGatewayError}")
             appendLine("- Process error present: ${summary.hasProcessError}")
+            appendLine("- Gateway log lines: ${summary.gatewayLogCount}")
             appendLine()
             appendLine("App / Device metadata")
             appendLine("- Package: ${metadata.packageName}")

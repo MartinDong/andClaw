@@ -206,8 +206,21 @@
     <string name="bug_report_close">Tutup</string>
     <string name="bug_report_presence_present">ada</string>
     <string name="bug_report_presence_none">tidak ada</string>
+    <string name="dashboard_update_failed_title">Pembaruan aset gagal</string>
+    <string name="dashboard_update_failed_reason">Alasan (%1$s): %2$s</string>
+    <string name="dashboard_update_failed_cooldown">Coba ulang otomatis dijeda. Sisa cooldown: %1$d mnt</string>
+    <string name="dashboard_update_failed_last_at">Terakhir gagal: %1$s</string>
+    <string name="dashboard_update_action_retry">Coba Lagi</string>
+    <string name="dashboard_update_action_recover">Instal pemulihan</string>
+    <string name="dashboard_update_action_done">Pembaruan selesai</string>
+    <string name="dashboard_update_action_failed">Pembaruan gagal</string>
+    <string name="dashboard_update_recovery_done">Pemulihan selesai</string>
+    <string name="dashboard_update_recovery_failed">Pemulihan gagal</string>
+    <string name="dashboard_update_action_cooldown">Coba ulang otomatis sedang dalam cooldown</string>
+    <string name="dashboard_update_action_manual_exhausted">Coba ulang manual sudah digunakan saat cooldown</string>
+    <string name="settings_api_key_get_link">Dapatkan kunci API %1$s →</string>
+    <string name="bug_report_included_gateway_logs">- Log UI gateway (disanitasi): %1$d baris</string>
 </resources>
-
 
 
 

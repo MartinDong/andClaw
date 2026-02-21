@@ -518,7 +518,12 @@ fun SettingsScreen(
                 ),
             ) {
                 Column(modifier = Modifier.padding(20.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { viewModel.onVersionInfoTapped() },
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
                         Icon(
                             Icons.Default.Info,
                             contentDescription = null,
@@ -766,6 +771,7 @@ fun SettingsScreen(
                         sessionErrorCount = bugReportUiState.preview.sessionErrorCount,
                         hasGatewayError = bugReportUiState.preview.hasGatewayError,
                         hasProcessError = bugReportUiState.preview.hasProcessError,
+                        gatewayLogCount = bugReportUiState.preview.gatewayLogCount,
                     ),
                     metadata = BugReportEmailMetadata(
                         appVersionName = BuildConfig.VERSION_NAME,
@@ -1295,6 +1301,10 @@ private fun BugReportDialog(
                 )
                 Text(
                     text = stringResource(R.string.bug_report_included_app_device_metadata),
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                Text(
+                    text = stringResource(R.string.bug_report_included_gateway_logs, state.preview.gatewayLogCount),
                     style = MaterialTheme.typography.bodySmall,
                 )
 

@@ -206,8 +206,21 @@
     <string name="bug_report_close">Fechar</string>
     <string name="bug_report_presence_present">presente</string>
     <string name="bug_report_presence_none">nenhum</string>
+    <string name="dashboard_update_failed_title">Falha na atualização de recursos</string>
+    <string name="dashboard_update_failed_reason">Motivo (%1$s): %2$s</string>
+    <string name="dashboard_update_failed_cooldown">Nova tentativa automática pausada. Cooldown restante: %1$d min</string>
+    <string name="dashboard_update_failed_last_at">Última falha: %1$s</string>
+    <string name="dashboard_update_action_retry">Tentar Novamente</string>
+    <string name="dashboard_update_action_recover">Instalação de recuperação</string>
+    <string name="dashboard_update_action_done">Atualização concluída</string>
+    <string name="dashboard_update_action_failed">Falha na atualização</string>
+    <string name="dashboard_update_recovery_done">Recuperação concluída</string>
+    <string name="dashboard_update_recovery_failed">Falha na recuperação</string>
+    <string name="dashboard_update_action_cooldown">A nova tentativa automática está em cooldown</string>
+    <string name="dashboard_update_action_manual_exhausted">A nova tentativa manual já foi usada durante o cooldown</string>
+    <string name="settings_api_key_get_link">Obter chave de API do %1$s →</string>
+    <string name="bug_report_included_gateway_logs">- Logs da UI do gateway (sanitizados): %1$d linhas</string>
 </resources>
-
 
 
 

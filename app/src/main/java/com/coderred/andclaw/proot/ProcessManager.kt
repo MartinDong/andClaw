@@ -1,5 +1,6 @@
 package com.coderred.andclaw.proot
 
+import android.os.Build
 import android.os.FileObserver
 import android.util.Log
 import com.coderred.andclaw.data.ChannelConfig
@@ -1007,13 +1008,22 @@ class ProcessManager(
         val dir = credentialsDir
         dir.mkdirs()
 
-        pairingFileObserver = object : FileObserver(
-            dir,
-            MODIFY or CREATE or DELETE or MOVED_TO,
-        ) {
-            override fun onEvent(event: Int, path: String?) {
-                if (path != null && path.contains("pairing")) {
-                    refreshPairingRequests()
+        val eventMask = FileObserver.MODIFY or FileObserver.CREATE or FileObserver.DELETE or FileObserver.MOVED_TO
+        pairingFileObserver = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            object : FileObserver(dir, eventMask) {
+                override fun onEvent(event: Int, path: String?) {
+                    if (path != null && path.contains("pairing")) {
+                        refreshPairingRequests()
+                    }
+                }
+            }
+        } else {
+            @Suppress("DEPRECATION")
+            object : FileObserver(dir.absolutePath, eventMask) {
+                override fun onEvent(event: Int, path: String?) {
+                    if (path != null && path.contains("pairing")) {
+                        refreshPairingRequests()
+                    }
                 }
             }
         }.also { it.startWatching() }

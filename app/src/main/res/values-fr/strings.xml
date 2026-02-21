@@ -207,8 +207,21 @@
     <string name="bug_report_close">Fermer</string>
     <string name="bug_report_presence_present">présent</string>
     <string name="bug_report_presence_none">aucun</string>
+    <string name="dashboard_update_failed_title">Échec de la mise à jour des ressources</string>
+    <string name="dashboard_update_failed_reason">Raison (%1$s) : %2$s</string>
+    <string name="dashboard_update_failed_cooldown">Nouvelle tentative auto en pause. Refroidissement restant : %1$d min</string>
+    <string name="dashboard_update_failed_last_at">Dernier échec : %1$s</string>
+    <string name="dashboard_update_action_retry">Réessayer</string>
+    <string name="dashboard_update_action_recover">Installation de récupération</string>
+    <string name="dashboard_update_action_done">Mise à jour terminée</string>
+    <string name="dashboard_update_action_failed">Échec de la mise à jour</string>
+    <string name="dashboard_update_recovery_done">Récupération terminée</string>
+    <string name="dashboard_update_recovery_failed">Échec de la récupération</string>
+    <string name="dashboard_update_action_cooldown">La nouvelle tentative auto est en période de refroidissement</string>
+    <string name="dashboard_update_action_manual_exhausted">La nouvelle tentative manuelle a déjà été utilisée pendant la période de refroidissement</string>
+    <string name="settings_api_key_get_link">Obtenir la clé API %1$s →</string>
+    <string name="bug_report_included_gateway_logs">- Journaux UI du gateway (nettoyés) : %1$d lignes</string>
 </resources>
-
 
 
 

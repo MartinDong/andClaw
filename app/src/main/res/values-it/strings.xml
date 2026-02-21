@@ -207,8 +207,21 @@
     <string name="bug_report_close">Chiudi</string>
     <string name="bug_report_presence_present">presente</string>
     <string name="bug_report_presence_none">nessuno</string>
+    <string name="dashboard_update_failed_title">Aggiornamento risorse non riuscito</string>
+    <string name="dashboard_update_failed_reason">Motivo (%1$s): %2$s</string>
+    <string name="dashboard_update_failed_cooldown">Riprova automatica in pausa. Cooldown rimanente: %1$d min</string>
+    <string name="dashboard_update_failed_last_at">Ultimo errore: %1$s</string>
+    <string name="dashboard_update_action_retry">Riprova</string>
+    <string name="dashboard_update_action_recover">Installazione di ripristino</string>
+    <string name="dashboard_update_action_done">Aggiornamento completato</string>
+    <string name="dashboard_update_action_failed">Aggiornamento non riuscito</string>
+    <string name="dashboard_update_recovery_done">Ripristino completato</string>
+    <string name="dashboard_update_recovery_failed">Ripristino non riuscito</string>
+    <string name="dashboard_update_action_cooldown">La riprova automatica è in cooldown</string>
+    <string name="dashboard_update_action_manual_exhausted">La riprova manuale è già stata usata durante il cooldown</string>
+    <string name="settings_api_key_get_link">Ottieni la chiave API di %1$s →</string>
+    <string name="bug_report_included_gateway_logs">- Log UI del gateway (sanificati): %1$d righe</string>
 </resources>
-
 
 
 

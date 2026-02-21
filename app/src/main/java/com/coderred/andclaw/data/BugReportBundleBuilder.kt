@@ -13,6 +13,7 @@ data class BugReportBundle(
     val gatewayErrorMessage: String? = null,
     val processErrorMessage: String? = null,
     val sessionErrors: List<BugReportSessionErrorEntry> = emptyList(),
+    val gatewayLogs: List<String> = emptyList(),
 )
 
 data class BugReportMetadata(
@@ -35,8 +36,18 @@ data class BugReportSessionErrorEntry(
 )
 
 object BugReportBundleBuilder {
+    fun sanitizeGatewayLogLines(gatewayLogLines: List<String>): List<String> {
+        return gatewayLogLines
+            .asSequence()
+            .map { it.sanitizeGatewayLogLine() }
+            .filter { it.isNotBlank() }
+            .take(MAX_GATEWAY_LOG_LINES)
+            .toList()
+    }
+
     fun build(
         sessionEntries: List<SessionLogEntry>,
+        gatewayLogLines: List<String>,
         metadata: BugReportMetadata,
         gatewayErrorMessage: String? = null,
         processErrorMessage: String? = null,
@@ -61,6 +72,7 @@ object BugReportBundleBuilder {
                     )
                 }
                 .toList(),
+            gatewayLogs = sanitizeGatewayLogLines(gatewayLogLines),
         )
     }
 
@@ -92,3 +104,39 @@ fun SessionLogEntry.isSessionError(): Boolean {
 private fun String?.normalizeError(): String? {
     return this?.trim()?.takeIf { it.isNotEmpty() }
 }
+
+private fun String.sanitizeGatewayLogLine(): String {
+    var sanitized = this
+    sanitized = JSON_SECRET_REGEX.replace(sanitized) { match ->
+        "${match.groupValues[1]}<redacted>${match.groupValues[3]}"
+    }
+    sanitized = AUTH_HEADER_REGEX.replace(sanitized) { match ->
+        "${match.groupValues[1]}<redacted>"
+    }
+    sanitized = KEY_VALUE_SECRET_REGEX.replace(sanitized) { match ->
+        "${match.groupValues[1]}${match.groupValues[2]}<redacted>"
+    }
+    sanitized = BEARER_REGEX.replace(sanitized, "Bearer <redacted>")
+    sanitized = QUERY_SECRET_REGEX.replace(sanitized) { match ->
+        "${match.groupValues[1]}<redacted>"
+    }
+    sanitized = RAW_KEY_REGEX.replace(sanitized, "<redacted>")
+    return sanitized.take(MAX_GATEWAY_LOG_LINE_LENGTH)
+}
+
+private const val MAX_GATEWAY_LOG_LINES = 400
+private const val MAX_GATEWAY_LOG_LINE_LENGTH = 500
+private const val SECRET_KEY_PATTERN =
+    "TELEGRAM_BOT_TOKEN|DISCORD_BOT_TOKEN|OPENROUTER_API_KEY|OPENAI_API_KEY|ANTHROPIC_API_KEY|GOOGLE_API_KEY|GEMINI_API_KEY|BRAVE_API_KEY|BRAVE_SEARCH_API_KEY|API_KEY|API-KEY|AUTHORIZATION|PASSWORD|SECRET|TOKEN|ACCESS_TOKEN|REFRESH_TOKEN|ID_TOKEN|X_API_KEY|X-API-KEY"
+private val JSON_SECRET_REGEX = Regex(
+    "(?i)(\"(?:$SECRET_KEY_PATTERN)\"\\s*:\\s*\")([^\"]+)(\")"
+)
+private val AUTH_HEADER_REGEX = Regex(
+    "(?i)(\\bauthorization\\b\\s*[:=]\\s*)[^,;\\r\\n]+"
+)
+private val KEY_VALUE_SECRET_REGEX = Regex(
+    "(?i)\\b($SECRET_KEY_PATTERN)\\b\\s*([=:])\\s*[^\\s,;]+"
+)
+private val BEARER_REGEX = Regex("(?i)bearer\\s+[a-z0-9._\\-]+")
+private val QUERY_SECRET_REGEX = Regex("(?i)([?&](?:token|api_key|key)=)[^&\\s]+")
+private val RAW_KEY_REGEX = Regex("\\b(?:sk|or|rk)-[A-Za-z0-9_\\-]{8,}\\b")
