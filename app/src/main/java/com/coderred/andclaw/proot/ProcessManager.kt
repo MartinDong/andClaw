@@ -25,6 +25,176 @@ import java.io.BufferedReader
 import java.io.File
 import java.io.InputStreamReader
 
+internal fun buildOpenClawPairingDenyScript(): String = """
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import crypto from "node:crypto";
+import { pathToFileURL } from "node:url";
+
+const [channelInput, codeInput] = process.argv.slice(1);
+
+function normalizeChannel(value) {
+  const normalized = String(value ?? "").trim().toLowerCase();
+  if (!/^[a-z][a-z0-9_-]{0,63}$/.test(normalized)) {
+    throw new Error("invalid channel");
+  }
+  return normalized;
+}
+
+function normalizeCode(value) {
+  const normalized = String(value ?? "").trim().toUpperCase();
+  if (!/^[A-Z0-9-]{4,32}$/.test(normalized)) {
+    throw new Error("invalid code");
+  }
+  return normalized;
+}
+
+function resolveHomeDir() {
+  const home = typeof process.env.HOME === "string" ? process.env.HOME.trim() : "";
+  return home || os.homedir();
+}
+
+function resolveCredentialsDir() {
+  return path.join(resolveHomeDir(), ".openclaw", "credentials");
+}
+
+function safeChannelKey(channel) {
+  const raw = String(channel ?? "").trim().toLowerCase();
+  if (!raw) throw new Error("invalid pairing channel");
+  const safe = raw.replace(/[\\/:*?"<>|]/g, "_").replace(/\.\./g, "_");
+  if (!safe || safe === "_") throw new Error("invalid pairing channel");
+  return safe;
+}
+
+function isValidAccountId(accountId) {
+  const raw = String(accountId ?? "").trim().toLowerCase();
+  if (!raw) return false;
+  const safe = raw.replace(/[\\/:*?"<>|]/g, "_").replace(/\.\./g, "_").trim();
+  return Boolean(safe && safe !== "_");
+}
+
+function resolvePairingPath(channel) {
+  return path.join(resolveCredentialsDir(), safeChannelKey(channel) + "-pairing.json");
+}
+
+async function writeJsonAtomic(filePath, value) {
+  const dir = path.dirname(filePath);
+  await fs.promises.mkdir(dir, { recursive: true, mode: 0o700 });
+  const tmpPath = path.join(dir, path.basename(filePath) + "." + crypto.randomUUID() + ".tmp");
+  await fs.promises.writeFile(tmpPath, JSON.stringify(value, null, 2) + "\n", "utf-8");
+  await fs.promises.chmod(tmpPath, 0o600);
+  await fs.promises.rename(tmpPath, filePath);
+}
+
+async function readPairingStore(filePath) {
+  try {
+    const raw = await fs.promises.readFile(filePath, "utf-8");
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed === "object" && Array.isArray(parsed.requests)) {
+      return parsed;
+    }
+  } catch {
+  }
+  return { version: 1, requests: [] };
+}
+
+async function ensureJsonFile(filePath, fallback) {
+  try {
+    await fs.promises.access(filePath);
+  } catch {
+    await writeJsonAtomic(filePath, fallback);
+  }
+}
+
+function resolveDistDir() {
+  const envDir = typeof process.env.OPENCLAW_DIST_DIR === "string" ? process.env.OPENCLAW_DIST_DIR.trim() : "";
+  return envDir || "/usr/local/lib/node_modules/openclaw/dist";
+}
+
+async function importDistModule(prefix, requiredExports) {
+  const distDir = resolveDistDir();
+  const candidates = fs.readdirSync(distDir).filter((name) => name.startsWith(prefix) && name.endsWith(".js")).sort();
+  if (candidates.length === 0) {
+    throw new Error("missing openclaw module: " + prefix);
+  }
+  const incompatibles = [];
+  for (const fileName of candidates) {
+    const modulePath = path.join(distDir, fileName);
+    let loaded;
+    try {
+      loaded = await import(pathToFileURL(modulePath).href);
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      incompatibles.push(fileName + " import failed: " + reason);
+      continue;
+    }
+    const missing = requiredExports.filter((key) => typeof loaded[key] !== "function");
+    if (missing.length === 0) {
+      return loaded;
+    }
+    incompatibles.push(fileName + " missing exports: " + missing.join(","));
+  }
+  throw new Error("no compatible module for " + prefix + ": " + incompatibles.join("; "));
+}
+
+const pairingStoreModule = await importDistModule("pairing-store-", ["o"]);
+const authProfilesModule = await importDistModule("auth-profiles-", ["D"]);
+const removeChannelAllowFromStoreEntry = pairingStoreModule.o;
+const withFileLock = authProfilesModule.D;
+
+const lockOptions = {
+  retries: {
+    retries: 10,
+    factor: 2,
+    minTimeout: 100,
+    maxTimeout: 10000,
+    randomize: true
+  },
+  stale: 30000
+};
+
+const channel = normalizeChannel(channelInput);
+const code = normalizeCode(codeInput);
+const pairingPath = resolvePairingPath(channel);
+let removedRequest = null;
+
+await ensureJsonFile(pairingPath, { version: 1, requests: [] });
+await withFileLock(pairingPath, lockOptions, async () => {
+  const store = await readPairingStore(pairingPath);
+  const requests = Array.isArray(store.requests) ? store.requests : [];
+  const index = requests.findIndex((request) => String(request?.code ?? "").trim().toUpperCase() === code);
+  if (index < 0) return;
+  removedRequest = requests[index] ?? null;
+  requests.splice(index, 1);
+  await writeJsonAtomic(pairingPath, {
+    version: 1,
+    requests
+  });
+});
+
+if (!removedRequest) {
+  console.error("pairing_not_found");
+  process.exit(3);
+}
+
+const entryId = String(removedRequest?.id ?? "").trim();
+const accountId = String(removedRequest?.meta?.accountId ?? "").trim();
+
+if (entryId) {
+  await removeChannelAllowFromStoreEntry({ channel, entry: entryId });
+  if (isValidAccountId(accountId)) {
+    await removeChannelAllowFromStoreEntry({ channel, entry: entryId, accountId });
+  }
+}
+
+console.log(JSON.stringify({
+  ok: true,
+  id: entryId || null,
+  accountId: accountId || null
+}));
+""".trimIndent()
+
 /**
  * proot 환경에서 OpenClaw 게이트웨이 프로세스를 관리한다.
  *
@@ -40,6 +210,8 @@ class ProcessManager(
     companion object {
         private const val TAG = "ProcessManager"
     }
+
+    private val openClawPairingDenyScript: String by lazy { buildOpenClawPairingDenyScript() }
 
     private val _gatewayState = MutableStateFlow(GatewayState())
     val gatewayState: StateFlow<GatewayState> = _gatewayState.asStateFlow()
@@ -61,6 +233,9 @@ class ProcessManager(
 
     private var pairingFileObserver: FileObserver? = null
     private var lastChannelConfig: ChannelConfig = ChannelConfig()
+    private var lastApiProvider: String = ""
+    private var lastApiKey: String = ""
+    private var lastBraveSearchApiKey: String = ""
 
     val isRunning: Boolean
         get() = _gatewayState.value.status == GatewayStatus.RUNNING
@@ -86,6 +261,9 @@ class ProcessManager(
         if (isRunning) return
 
         lastChannelConfig = channelConfig
+        lastApiProvider = apiProvider
+        lastApiKey = apiKey
+        lastBraveSearchApiKey = braveSearchApiKey
 
         _gatewayState.value = _gatewayState.value.copy(
             status = GatewayStatus.STARTING,
@@ -907,7 +1085,7 @@ class ProcessManager(
         return slug.ifBlank { null }
     }
 
-    // ── Pairing 관리 (파일 직접 읽기/쓰기 방식) ──
+    // ── Pairing 관리 (조회: 파일 직접 읽기, 승인/거부: OpenClaw 위임) ──
 
     private val credentialsDir: File
         get() = File(prootManager.rootfsDir, "root/.openclaw/credentials")
@@ -949,58 +1127,41 @@ class ProcessManager(
 
     /**
      * pairing 요청을 승인한다.
-     * pairing.json에서 해당 요청을 제거하고 allowFrom.json에 ID를 추가한다.
+     * OpenClaw CLI 승인 경로를 사용한다.
      */
     suspend fun approvePairing(channel: String, code: String): Boolean {
         return withContext(Dispatchers.IO) {
             try {
-                val pairingFile = File(credentialsDir, "$channel-pairing.json")
-                if (!pairingFile.exists()) return@withContext false
+                val normalizedChannel = channel.trim().lowercase()
+                val normalizedCode = code.trim().uppercase()
 
-                val json = JSONObject(pairingFile.readText())
-                val requests = json.optJSONArray("requests") ?: return@withContext false
-
-                // 코드에 해당하는 요청 찾기
-                var targetId: String? = null
-                var targetIndex = -1
-                for (i in 0 until requests.length()) {
-                    val req = requests.getJSONObject(i)
-                    if (req.optString("code") == code) {
-                        targetId = req.optString("id")
-                        targetIndex = i
-                        break
-                    }
+                if (!normalizedChannel.matches(Regex("^[a-z][a-z0-9_-]{0,63}$"))) {
+                    addLog("[andClaw] Pairing approve failed: invalid channel")
+                    return@withContext false
                 }
-                if (targetId == null || targetIndex < 0) return@withContext false
+                if (!normalizedCode.matches(Regex("^[A-Z0-9-]{4,32}$"))) {
+                    addLog("[andClaw] Pairing approve failed: invalid code")
+                    return@withContext false
+                }
 
-                // pairing.json에서 제거
-                requests.remove(targetIndex)
-                pairingFile.writeText(json.toString(2))
+                val command = "export NODE_OPTIONS='--require /root/.openclaw-patch.js' && (" +
+                    "openclaw pairing approve '${escapeSingleQuotedShell(normalizedChannel)}' '${escapeSingleQuotedShell(normalizedCode)}' 2>&1 " +
+                    "|| openclaw pairing approve --channel '${escapeSingleQuotedShell(normalizedChannel)}' --code '${escapeSingleQuotedShell(normalizedCode)}' 2>&1)"
+                val result = prootManager.executeWithResult(
+                    command = command,
+                    timeoutMs = 120_000,
+                    extraEnv = buildOpenClawCliEnv(),
+                ) ?: return@withContext false
 
-                // allowFrom.json에 ID 추가
-                val allowFile = File(credentialsDir, "$channel-allowFrom.json")
-                val allowJson = if (allowFile.exists()) {
-                    JSONObject(allowFile.readText())
+                val success = !result.timedOut && result.exitCode == 0
+                if (success) {
+                    addLog("[andClaw] Pairing approved via OpenClaw CLI: $normalizedChannel $normalizedCode")
                 } else {
-                    JSONObject().put("version", 1).put("allowFrom", org.json.JSONArray())
+                    val reason = result.output.lineSequence().lastOrNull { it.isNotBlank() }
+                        ?: "exit=${result.exitCode}"
+                    addLog("[andClaw] Pairing approve failed: $reason")
                 }
-                val allowFrom = allowJson.optJSONArray("allowFrom") ?: org.json.JSONArray()
-                // 중복 방지
-                var alreadyExists = false
-                for (i in 0 until allowFrom.length()) {
-                    if (allowFrom.optString(i) == targetId) {
-                        alreadyExists = true
-                        break
-                    }
-                }
-                if (!alreadyExists) {
-                    allowFrom.put(targetId)
-                    allowJson.put("allowFrom", allowFrom)
-                    allowFile.writeText(allowJson.toString(2))
-                }
-
-                addLog("[andClaw] Pairing approved: $channel $code (id: $targetId)")
-                true
+                success
             } catch (e: Exception) {
                 addLog("[andClaw] Pairing approve failed: ${e.message}")
                 false
@@ -1010,30 +1171,42 @@ class ProcessManager(
 
     /**
      * pairing 요청을 거부한다.
-     * pairing.json에서 해당 요청만 제거한다.
+     * OpenClaw CLI에 deny 명령이 없어 OpenClaw 내부 store 유틸로 락 기반 제거를 수행한다.
      */
     suspend fun denyPairing(channel: String, code: String): Boolean {
         return withContext(Dispatchers.IO) {
             try {
-                val pairingFile = File(credentialsDir, "$channel-pairing.json")
-                if (!pairingFile.exists()) return@withContext false
+                val normalizedChannel = channel.trim().lowercase()
+                val normalizedCode = code.trim().uppercase()
 
-                val json = JSONObject(pairingFile.readText())
-                val requests = json.optJSONArray("requests") ?: return@withContext false
+                if (!normalizedChannel.matches(Regex("^[a-z][a-z0-9_-]{0,63}$"))) {
+                    addLog("[andClaw] Pairing deny failed: invalid channel")
+                    return@withContext false
+                }
+                if (!normalizedCode.matches(Regex("^[A-Z0-9-]{4,32}$"))) {
+                    addLog("[andClaw] Pairing deny failed: invalid code")
+                    return@withContext false
+                }
 
-                var removed = false
-                for (i in 0 until requests.length()) {
-                    if (requests.getJSONObject(i).optString("code") == code) {
-                        requests.remove(i)
-                        removed = true
-                        break
-                    }
+                val command = "export NODE_OPTIONS='--require /root/.openclaw-patch.js' && " +
+                    "node --input-type=module -e '${escapeSingleQuotedShell(openClawPairingDenyScript)}' " +
+                    "'${escapeSingleQuotedShell(normalizedChannel)}' '${escapeSingleQuotedShell(normalizedCode)}' 2>&1"
+                val result = prootManager.executeWithResult(
+                    command = command,
+                    timeoutMs = 120_000,
+                    extraEnv = buildOpenClawCliEnv(),
+                ) ?: return@withContext false
+
+                val success = !result.timedOut && result.exitCode == 0
+                if (!success) {
+                    val reason = result.output.lineSequence().lastOrNull { it.isNotBlank() }
+                        ?: "exit=${result.exitCode}"
+                    addLog("[andClaw] Pairing deny failed: $reason")
+                    return@withContext false
                 }
-                if (removed) {
-                    pairingFile.writeText(json.toString(2))
-                    addLog("[andClaw] Pairing denied: $channel $code")
-                }
-                removed
+
+                addLog("[andClaw] Pairing denied via OpenClaw store lock: $normalizedChannel $normalizedCode")
+                true
             } catch (e: Exception) {
                 addLog("[andClaw] Pairing deny failed: ${e.message}")
                 false
@@ -1081,6 +1254,36 @@ class ProcessManager(
             _pairingRequests.value = listPairingRequests(lastChannelConfig)
         }
     }
+
+    private fun buildOpenClawCliEnv(): Map<String, String> {
+        fun resolved(value: String): String = value.ifBlank { "__andclaw_env_placeholder__" }
+
+        return buildMap {
+            put("OPENROUTER_API_KEY", "__andclaw_env_placeholder__")
+            put("OPENAI_API_KEY", "__andclaw_env_placeholder__")
+            put("ANTHROPIC_API_KEY", "__andclaw_env_placeholder__")
+            put("GOOGLE_API_KEY", "__andclaw_env_placeholder__")
+            put("GEMINI_API_KEY", "__andclaw_env_placeholder__")
+            put("BRAVE_API_KEY", resolved(lastBraveSearchApiKey))
+            put("BRAVE_SEARCH_API_KEY", resolved(lastBraveSearchApiKey))
+            put("TELEGRAM_BOT_TOKEN", resolved(lastChannelConfig.telegramBotToken))
+            put("DISCORD_BOT_TOKEN", resolved(lastChannelConfig.discordBotToken))
+
+            if (lastApiKey.isNotBlank()) {
+                when (lastApiProvider) {
+                    "anthropic" -> put("ANTHROPIC_API_KEY", lastApiKey)
+                    "openai" -> put("OPENAI_API_KEY", lastApiKey)
+                    "openrouter" -> put("OPENROUTER_API_KEY", lastApiKey)
+                    "google" -> {
+                        put("GOOGLE_API_KEY", lastApiKey)
+                        put("GEMINI_API_KEY", lastApiKey)
+                    }
+                }
+            }
+        }
+    }
+
+    private fun escapeSingleQuotedShell(value: String): String = value.replace("'", "'\"'\"'")
 
     @Suppress("deprecation")
     private fun getProcessId(process: Process?): Int? {

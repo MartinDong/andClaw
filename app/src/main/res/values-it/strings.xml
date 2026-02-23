@@ -226,6 +226,7 @@
     <string name="dashboard_update_recovery_failed">Ripristino non riuscito</string>
     <string name="dashboard_update_action_cooldown">La riprova automatica è in cooldown</string>
     <string name="dashboard_update_action_manual_exhausted">La riprova manuale è già stata usata durante il cooldown</string>
+    <string name="settings_recovery_install_confirm_message">⚠️ La reinstallazione di recupero reinstallerà l’intero ambiente principale dell’app.\n\nI tuoi dati utente (chat/sessioni) non verranno eliminati, ma il recupero può richiedere diversi minuti.\n\nNon chiudere né forzare l’arresto dell’app mentre il recupero è in corso.</string>
     <string name="settings_api_key_get_link">Ottieni la chiave API di %1$s →</string>
     <string name="bug_report_included_gateway_logs">- Log UI del gateway (sanificati): %1$d righe</string>
 </resources>

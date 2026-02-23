@@ -226,6 +226,7 @@
     <string name="dashboard_update_recovery_failed">復旧失敗</string>
     <string name="dashboard_update_action_cooldown">自動再試行はクールダウン中です</string>
     <string name="dashboard_update_action_manual_exhausted">手動再試行はクールダウン中に既に使用されています</string>
+    <string name="settings_recovery_install_confirm_message">⚠️ 復旧インストールを実行すると、アプリのコア実行環境全体を再インストールします。\n\nユーザーデータ（チャット/セッション）は削除されませんが、復旧には数分以上かかる場合があります。\n\n復旧中は、アプリを閉じたり強制終了したりしないでください。</string>
     <string name="settings_api_key_get_link">%1$s APIキーを取得 →</string>
     <string name="bug_report_included_gateway_logs">- Gateway UIログ（サニタイズ済み）: %1$d 行</string>
 </resources>

@@ -226,6 +226,7 @@
     <string name="dashboard_update_recovery_failed">恢复失败</string>
     <string name="dashboard_update_action_cooldown">自动重试处于冷却中</string>
     <string name="dashboard_update_action_manual_exhausted">冷却期间手动重试已用过</string>
+    <string name="settings_recovery_install_confirm_message">⚠️ 恢复重装会重新安装应用的完整核心运行环境。\n\n你的用户数据（聊天/会话）不会被删除，但恢复可能需要几分钟。\n\n恢复进行期间，请不要关闭或强行停止应用。</string>
     <string name="settings_api_key_get_link">获取 %1$s API 密钥 →</string>
     <string name="bug_report_included_gateway_logs">- 网关 UI 日志（已脱敏）：%1$d 行</string>
 </resources>

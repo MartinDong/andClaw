@@ -225,6 +225,7 @@
     <string name="dashboard_update_recovery_failed">रिकवरी विफल</string>
     <string name="dashboard_update_action_cooldown">ऑटो रिट्राई कूलडाउन में है</string>
     <string name="dashboard_update_action_manual_exhausted">कूलडाउन में मैनुअल रिट्राई पहले ही इस्तेमाल हो चुका है</string>
+    <string name="settings_recovery_install_confirm_message">⚠️ रिकवरी पुनर्स्थापना ऐप का पूरा मुख्य वातावरण फिर से इंस्टॉल करेगी।\n\nआपका उपयोगकर्ता डेटा (चैट/सेशन) नहीं मिटेगा, लेकिन रिकवरी में कई मिनट लग सकते हैं।\n\nरिकवरी चल रही हो तब तक ऐप बंद न करें और फोर्स-स्टॉप भी न करें।</string>
     <string name="settings_api_key_get_link">%1$s API कुंजी प्राप्त करें →</string>
     <string name="bug_report_included_gateway_logs">- गेटवे UI लॉग (सैनिटाइज़्ड): %1$d पंक्तियाँ</string>
 </resources>

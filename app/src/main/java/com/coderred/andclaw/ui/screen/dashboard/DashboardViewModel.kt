@@ -98,6 +98,9 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
     val pairingRequests: StateFlow<List<PairingRequest>> = app.processManager.pairingRequests
         .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
+    private val _pairingActionProgress = MutableStateFlow<PairingActionProgress?>(null)
+    val pairingActionProgress: StateFlow<PairingActionProgress?> = _pairingActionProgress.asStateFlow()
+
     // ── WhatsApp QR ──
     private val _whatsappQrState = MutableStateFlow<WhatsAppQrState>(WhatsAppQrState.Idle)
     val whatsappQrState: StateFlow<WhatsAppQrState> = _whatsappQrState.asStateFlow()
@@ -240,17 +243,35 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
 
     // ── Pairing ──
 
-    fun approvePairing(channel: String, code: String) {
+    fun approvePairing(request: PairingRequest) {
+        if (_pairingActionProgress.value != null) return
+        _pairingActionProgress.value = PairingActionProgress(
+            action = PairingActionType.APPROVE,
+            request = request,
+        )
         viewModelScope.launch {
-            app.processManager.approvePairing(channel, code)
-            app.processManager.refreshPairingRequests()
+            try {
+                app.processManager.approvePairing(request.channel, request.code)
+                app.processManager.refreshPairingRequests()
+            } finally {
+                _pairingActionProgress.value = null
+            }
         }
     }
 
-    fun denyPairing(channel: String, code: String) {
+    fun denyPairing(request: PairingRequest) {
+        if (_pairingActionProgress.value != null) return
+        _pairingActionProgress.value = PairingActionProgress(
+            action = PairingActionType.DENY,
+            request = request,
+        )
         viewModelScope.launch {
-            app.processManager.denyPairing(channel, code)
-            app.processManager.refreshPairingRequests()
+            try {
+                app.processManager.denyPairing(request.channel, request.code)
+                app.processManager.refreshPairingRequests()
+            } finally {
+                _pairingActionProgress.value = null
+            }
         }
     }
 
@@ -428,3 +449,13 @@ sealed class WhatsAppQrState {
     data object Connected : WhatsAppQrState()
     data class Error(val message: String) : WhatsAppQrState()
 }
+
+enum class PairingActionType {
+    APPROVE,
+    DENY,
+}
+
+data class PairingActionProgress(
+    val action: PairingActionType,
+    val request: PairingRequest,
+)

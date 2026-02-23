@@ -296,14 +296,20 @@ class ProotManager(private val context: Context) {
     /**
      * proot 안에서 명령을 실행하고 종료코드/출력을 반환한다.
      */
-    fun executeWithResult(command: String, timeoutMs: Long = 300_000): CommandResult? {
+    fun executeWithResult(
+        command: String,
+        timeoutMs: Long = 300_000,
+        extraEnv: Map<String, String> = emptyMap(),
+    ): CommandResult? {
         return try {
             val cmd = buildProotCommand(command)
-            val env = buildEnvironment(mapOf(
-                "HOME" to "/root",
-                "PATH" to "/usr/local/bin:/usr/bin:/bin",
-                "LANG" to "C.UTF-8",
-            ))
+            val env = buildEnvironment(
+                mapOf(
+                    "HOME" to "/root",
+                    "PATH" to "/usr/local/bin:/usr/bin:/bin",
+                    "LANG" to "C.UTF-8",
+                ) + extraEnv,
+            )
             val pb = ProcessBuilder(cmd).redirectErrorStream(true)
             pb.environment().putAll(env)
             val process = pb.start()

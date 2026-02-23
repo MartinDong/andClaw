@@ -22,6 +22,7 @@ import com.coderred.andclaw.data.SessionLogEntry
 import com.coderred.andclaw.data.parseOpenRouterModels
 import com.coderred.andclaw.data.GatewayStatus
 import com.coderred.andclaw.data.isSessionError
+import com.coderred.andclaw.proot.BundleUpdateOutcome
 import com.coderred.andclaw.proot.GatewayWsClient
 import com.coderred.andclaw.service.GatewayService
 import com.coderred.andclaw.ui.screen.dashboard.WhatsAppQrState
@@ -53,6 +54,11 @@ import java.util.concurrent.atomic.AtomicBoolean
 
 class SettingsViewModel(application: Application) : AndroidViewModel(application) {
     data class DoctorFixResult(
+        val success: Boolean,
+        val output: String,
+    )
+
+    data class RecoveryInstallResult(
         val success: Boolean,
         val output: String,
     )
@@ -95,6 +101,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     private val prefs = (application as AndClawApp).preferencesManager
     private val prootManager = (application as AndClawApp).prootManager
     private val processManager = (application as AndClawApp).processManager
+    private val setupManager = (application as AndClawApp).setupManager
 
     val autoStartOnBoot: StateFlow<Boolean> = prefs.autoStartOnBoot
         .stateIn(viewModelScope, SharingStarted.Eagerly, false)
@@ -168,6 +175,10 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     val isDoctorFixRunning: StateFlow<Boolean> = _isDoctorFixRunning.asStateFlow()
     private val _doctorFixResult = MutableStateFlow<DoctorFixResult?>(null)
     val doctorFixResult: StateFlow<DoctorFixResult?> = _doctorFixResult.asStateFlow()
+    private val _isRecoveryInstallRunning = MutableStateFlow(false)
+    val isRecoveryInstallRunning: StateFlow<Boolean> = _isRecoveryInstallRunning.asStateFlow()
+    private val _recoveryInstallResult = MutableStateFlow<RecoveryInstallResult?>(null)
+    val recoveryInstallResult: StateFlow<RecoveryInstallResult?> = _recoveryInstallResult.asStateFlow()
     private val _bugReportUiState = MutableStateFlow(BugReportUiState())
     val bugReportUiState: StateFlow<BugReportUiState> = _bugReportUiState.asStateFlow()
     private val codexAuthRunning = AtomicBoolean(false)
@@ -305,32 +316,110 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     }
 
     fun runOpenClawDoctorFix() {
-        if (_isDoctorFixRunning.value) return
+        if (_isDoctorFixRunning.value || _isRecoveryInstallRunning.value) return
+        _isDoctorFixRunning.value = true
         viewModelScope.launch(Dispatchers.IO) {
-            _isDoctorFixRunning.value = true
-            val command = "export NODE_OPTIONS='--require /root/.openclaw-patch.js' && " +
-                "openclaw doctor --fix 2>&1"
-            val result = prootManager.executeWithResult(command, timeoutMs = 300_000)
-            _doctorFixResult.value = when {
-                result == null -> DoctorFixResult(
-                    success = false,
-                    output = "Failed to execute command.",
+            try {
+                val provider = prefs.apiProvider.first()
+                val apiKey = prefs.apiKey.first()
+                val braveApiKey = prefs.braveSearchApiKey.first()
+                val channelConfig = prefs.channelConfig.first()
+
+                val doctorEnv = buildMap {
+                    fun resolved(value: String): String = value.ifBlank { "__andclaw_env_placeholder__" }
+
+                    put("OPENROUTER_API_KEY", "__andclaw_env_placeholder__")
+                    put("OPENAI_API_KEY", "__andclaw_env_placeholder__")
+                    put("ANTHROPIC_API_KEY", "__andclaw_env_placeholder__")
+                    put("GOOGLE_API_KEY", "__andclaw_env_placeholder__")
+                    put("GEMINI_API_KEY", "__andclaw_env_placeholder__")
+                    put("BRAVE_API_KEY", resolved(braveApiKey))
+                    put("BRAVE_SEARCH_API_KEY", resolved(braveApiKey))
+                    put("TELEGRAM_BOT_TOKEN", resolved(channelConfig.telegramBotToken))
+                    put("DISCORD_BOT_TOKEN", resolved(channelConfig.discordBotToken))
+
+                    if (apiKey.isNotBlank()) {
+                        when (provider) {
+                            "anthropic" -> put("ANTHROPIC_API_KEY", apiKey)
+                            "openai" -> put("OPENAI_API_KEY", apiKey)
+                            "openrouter" -> put("OPENROUTER_API_KEY", apiKey)
+                            "google" -> {
+                                put("GOOGLE_API_KEY", apiKey)
+                                put("GEMINI_API_KEY", apiKey)
+                            }
+                        }
+                    }
+                }
+
+                val command = "export NODE_OPTIONS='--require /root/.openclaw-patch.js' && " +
+                    "openclaw doctor --fix 2>&1"
+                val result = prootManager.executeWithResult(
+                    command = command,
+                    timeoutMs = 300_000,
+                    extraEnv = doctorEnv,
                 )
-                result.timedOut -> DoctorFixResult(
-                    success = false,
-                    output = "Command timed out after 300 seconds.\n\n${result.output}",
-                )
-                else -> DoctorFixResult(
-                    success = result.exitCode == 0,
-                    output = result.output.ifBlank { "No output." },
-                )
+                _doctorFixResult.value = when {
+                    result == null -> DoctorFixResult(
+                        success = false,
+                        output = "Failed to execute command.",
+                    )
+                    result.timedOut -> DoctorFixResult(
+                        success = false,
+                        output = "Command timed out after 300 seconds.\n\n${result.output}",
+                    )
+                    else -> DoctorFixResult(
+                        success = result.exitCode == 0,
+                        output = result.output.ifBlank { "No output." },
+                    )
+                }
+            } finally {
+                _isDoctorFixRunning.value = false
             }
-            _isDoctorFixRunning.value = false
         }
     }
 
     fun consumeDoctorFixResult() {
         _doctorFixResult.value = null
+    }
+
+    fun runRecoveryInstall() {
+        if (_isRecoveryInstallRunning.value || _isDoctorFixRunning.value) return
+        _isRecoveryInstallRunning.value = true
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val result = runCatching { setupManager.runRecoveryInstall() }.getOrNull()
+                _recoveryInstallResult.value = when {
+                    result == null -> RecoveryInstallResult(
+                        success = false,
+                        output = getApplication<Application>().getString(R.string.dashboard_update_recovery_failed),
+                    )
+                    result.outcome == BundleUpdateOutcome.UPDATED ||
+                        result.outcome == BundleUpdateOutcome.SKIPPED_NOT_REQUIRED -> RecoveryInstallResult(
+                        success = true,
+                        output = getApplication<Application>().getString(R.string.dashboard_update_recovery_done),
+                    )
+                    result.outcome == BundleUpdateOutcome.SKIPPED_COOLDOWN -> RecoveryInstallResult(
+                        success = false,
+                        output = getApplication<Application>().getString(R.string.dashboard_update_action_cooldown),
+                    )
+                    result.outcome == BundleUpdateOutcome.SKIPPED_MANUAL_RETRY_EXHAUSTED -> RecoveryInstallResult(
+                        success = false,
+                        output = getApplication<Application>().getString(R.string.dashboard_update_action_manual_exhausted),
+                    )
+                    else -> RecoveryInstallResult(
+                        success = false,
+                        output = result.errorMessage
+                            ?: getApplication<Application>().getString(R.string.dashboard_update_recovery_failed),
+                    )
+                }
+            } finally {
+                _isRecoveryInstallRunning.value = false
+            }
+        }
+    }
+
+    fun consumeRecoveryInstallResult() {
+        _recoveryInstallResult.value = null
     }
 
     fun openBugReportDialog() {

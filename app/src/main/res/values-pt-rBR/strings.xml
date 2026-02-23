@@ -225,6 +225,7 @@
     <string name="dashboard_update_recovery_failed">Falha na recuperação</string>
     <string name="dashboard_update_action_cooldown">A nova tentativa automática está em cooldown</string>
     <string name="dashboard_update_action_manual_exhausted">A nova tentativa manual já foi usada durante o cooldown</string>
+    <string name="settings_recovery_install_confirm_message">⚠️ A reinstalação de recuperação reinstalará todo o ambiente principal do app.\n\nSeus dados de usuário (chats/sessões) não serão apagados, mas a recuperação pode levar vários minutos.\n\nNão feche nem force a parada do app enquanto a recuperação estiver em andamento.</string>
     <string name="settings_api_key_get_link">Obter chave de API do %1$s →</string>
     <string name="bug_report_included_gateway_logs">- Logs da UI do gateway (sanitizados): %1$d linhas</string>
 </resources>

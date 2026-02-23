@@ -9,6 +9,7 @@ import android.os.Build
 import android.widget.Toast
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -38,7 +39,9 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -68,6 +71,8 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.coderred.andclaw.BuildConfig
 import com.coderred.andclaw.R
@@ -103,6 +108,8 @@ fun SettingsScreen(
     val braveSearchApiKey by viewModel.braveSearchApiKey.collectAsState()
     val isDoctorFixRunning by viewModel.isDoctorFixRunning.collectAsState()
     val doctorFixResult by viewModel.doctorFixResult.collectAsState()
+    val isRecoveryInstallRunning by viewModel.isRecoveryInstallRunning.collectAsState()
+    val recoveryInstallResult by viewModel.recoveryInstallResult.collectAsState()
     val whatsappQrState by viewModel.whatsappQrState.collectAsState()
     val isCodexAuthInProgress by viewModel.isCodexAuthInProgress.collectAsState()
     val isCodexAuthenticated by viewModel.isCodexAuthenticated.collectAsState()
@@ -133,6 +140,8 @@ fun SettingsScreen(
     var showDiscordGuildAllowlistDialog by remember { mutableStateOf(false) }
     var showBraveKeyDialog by remember { mutableStateOf(false) }
     var showOssLicensesDialog by remember { mutableStateOf(false) }
+    var showRecoveryInstallConfirmDialog by remember { mutableStateOf(false) }
+    val isMaintenanceBusy = isDoctorFixRunning || isRecoveryInstallRunning
     val ossLicensesText = remember {
         runCatching {
             context.resources.openRawResource(R.raw.third_party_licenses)
@@ -409,6 +418,7 @@ fun SettingsScreen(
                         } else {
                             stringResource(R.string.settings_openclaw_doctor_fix_run)
                         },
+                        enabled = !isMaintenanceBusy,
                         onClick = { viewModel.runOpenClawDoctorFix() },
                     )
                 }
@@ -600,6 +610,20 @@ fun SettingsScreen(
                         onClick = { viewModel.openBugReportDialog() },
                     )
                 }
+            }
+
+            FilledTonalButton(
+                onClick = { showRecoveryInstallConfirmDialog = true },
+                enabled = !isMaintenanceBusy,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text(
+                    if (isRecoveryInstallRunning) {
+                        stringResource(R.string.settings_openclaw_doctor_fix_running)
+                    } else {
+                        stringResource(R.string.dashboard_update_action_recover)
+                    },
+                )
             }
 
             Spacer(modifier = Modifier.height(8.dp))
@@ -871,12 +895,127 @@ fun SettingsScreen(
         )
     }
 
+    if (recoveryInstallResult != null) {
+        AlertDialog(
+            onDismissRequest = { viewModel.consumeRecoveryInstallResult() },
+            shape = RoundedCornerShape(24.dp),
+            title = {
+                Text(
+                    if (recoveryInstallResult?.success == true) {
+                        stringResource(R.string.dashboard_update_recovery_done)
+                    } else {
+                        stringResource(R.string.dashboard_update_recovery_failed)
+                    },
+                )
+            },
+            text = {
+                Text(
+                    text = recoveryInstallResult?.output.orEmpty(),
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = { viewModel.consumeRecoveryInstallResult() }) {
+                    Text(stringResource(android.R.string.ok))
+                }
+            },
+        )
+    }
+
+    if (isRecoveryInstallRunning) {
+        RecoveryInstallProgressDialog()
+    }
+
+    if (showRecoveryInstallConfirmDialog) {
+        AlertDialog(
+            onDismissRequest = { showRecoveryInstallConfirmDialog = false },
+            shape = RoundedCornerShape(24.dp),
+            title = {
+                Text(stringResource(R.string.dashboard_update_action_recover))
+            },
+            text = {
+                Text(
+                    text = stringResource(R.string.settings_recovery_install_confirm_message),
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showRecoveryInstallConfirmDialog = false
+                        viewModel.runRecoveryInstall()
+                    },
+                ) {
+                    Text(stringResource(R.string.dashboard_update_action_recover))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showRecoveryInstallConfirmDialog = false }) {
+                    Text(stringResource(android.R.string.cancel))
+                }
+            },
+        )
+    }
+
     // ── WhatsApp QR Dialog ──
     if (whatsappQrState !is WhatsAppQrState.Idle) {
         WhatsAppQrDialog(
             state = whatsappQrState,
             onDismiss = { viewModel.cancelWhatsAppQr() },
         )
+    }
+}
+
+@Composable
+private fun RecoveryInstallProgressDialog() {
+    Dialog(
+        onDismissRequest = { },
+        properties = DialogProperties(
+            dismissOnBackPress = false,
+            dismissOnClickOutside = false,
+            usePlatformDefaultWidth = false,
+        ),
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(20.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(28.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surface,
+                ),
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 24.dp, vertical = 28.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(16.dp),
+                ) {
+                    CircularProgressIndicator(modifier = Modifier.size(54.dp))
+                    Text(
+                        text = stringResource(R.string.dashboard_update_action_recover),
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold,
+                    )
+                    Text(
+                        text = stringResource(R.string.settings_openclaw_doctor_fix_running),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    Text(
+                        text = stringResource(R.string.settings_recovery_install_confirm_message),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        }
     }
 }
 
@@ -947,11 +1086,26 @@ private fun SettingClickableRow(
     onClick: () -> Unit,
     valueColor: androidx.compose.ui.graphics.Color? = null,
     indent: Boolean = false,
+    enabled: Boolean = true,
 ) {
+    val titleColor = if (enabled) {
+        MaterialTheme.colorScheme.onSurface
+    } else {
+        MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
+    }
+    val resolvedValueColor = (valueColor ?: MaterialTheme.colorScheme.onSurfaceVariant).let { color ->
+        if (enabled) color else color.copy(alpha = 0.5f)
+    }
+    val arrowColor = if (enabled) {
+        MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+    } else {
+        MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.25f)
+    }
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick)
+            .clickable(enabled = enabled, onClick = onClick)
             .padding(
                 start = if (indent) 36.dp else 20.dp,
                 end = 20.dp,
@@ -964,11 +1118,12 @@ private fun SettingClickableRow(
             Text(
                 text = title,
                 style = if (indent) MaterialTheme.typography.bodyMedium else MaterialTheme.typography.titleMedium,
+                color = titleColor,
             )
             Text(
                 text = value,
                 style = MaterialTheme.typography.bodySmall,
-                color = valueColor ?: MaterialTheme.colorScheme.onSurfaceVariant,
+                color = resolvedValueColor,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
@@ -977,7 +1132,7 @@ private fun SettingClickableRow(
         Icon(
             Icons.AutoMirrored.Filled.KeyboardArrowRight,
             contentDescription = null,
-            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+            tint = arrowColor,
             modifier = Modifier.size(20.dp),
         )
     }

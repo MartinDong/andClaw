@@ -97,6 +97,7 @@
     <string name="dashboard_update_recovery_failed">Recovery failed</string>
     <string name="dashboard_update_action_cooldown">Auto retry is in cooldown</string>
     <string name="dashboard_update_action_manual_exhausted">Manual retry already used in cooldown</string>
+    <string name="settings_recovery_install_confirm_message">⚠️ Recovery reinstall will reinstall the entire core runtime of the app.\n\nYour user data (chats/sessions) will not be deleted, but recovery can take several minutes.\n\nDo not close or force-stop the app while recovery is in progress.</string>
     <string name="dashboard_apikey_required_title">API key required</string>
     <string name="dashboard_apikey_required_message">Please set up your API key in Settings before starting the gateway.</string>
     <string name="dashboard_apikey_go_settings">Go to Settings</string>

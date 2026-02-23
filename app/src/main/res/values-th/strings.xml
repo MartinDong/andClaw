@@ -225,6 +225,7 @@
     <string name="dashboard_update_recovery_failed">กู้คืนล้มเหลว</string>
     <string name="dashboard_update_action_cooldown">การลองใหม่อัตโนมัติอยู่ในคูลดาวน์</string>
     <string name="dashboard_update_action_manual_exhausted">ใช้การลองใหม่แบบแมนนวลในคูลดาวน์ไปแล้ว</string>
+    <string name="settings_recovery_install_confirm_message">⚠️ การติดตั้งกู้คืนจะติดตั้งรันไทม์หลักทั้งหมดของแอปใหม่อีกครั้ง\n\nข้อมูลผู้ใช้ของคุณ (แชต/เซสชัน) จะไม่ถูกลบ แต่การกู้คืนอาจใช้เวลาหลายนาที\n\nระหว่างที่กำลังกู้คืน อย่าปิดแอปหรือบังคับหยุดแอป</string>
     <string name="settings_api_key_get_link">รับคีย์ API ของ %1$s →</string>
     <string name="bug_report_included_gateway_logs">- บันทึก UI ของเกตเวย์ (ลบข้อมูลสำคัญแล้ว): %1$d บรรทัด</string>
 </resources>

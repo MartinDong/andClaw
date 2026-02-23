@@ -225,6 +225,7 @@
     <string name="dashboard_update_recovery_failed">Kurtarma başarısız</string>
     <string name="dashboard_update_action_cooldown">Otomatik yeniden deneme bekleme süresinde</string>
     <string name="dashboard_update_action_manual_exhausted">Manuel yeniden deneme bekleme süresinde zaten kullanıldı</string>
+    <string name="settings_recovery_install_confirm_message">⚠️ Kurtarma yeniden kurulumu, uygulamanın tüm temel ortamını yeniden yükler.\n\nKullanıcı verileriniz (sohbetler/oturumlar) silinmez, ancak kurtarma birkaç dakika sürebilir.\n\nKurtarma sürerken uygulamayı kapatmayın veya zorla durdurmayın.</string>
     <string name="settings_api_key_get_link">%1$s API anahtarı al →</string>
     <string name="bug_report_included_gateway_logs">- Gateway UI günlükleri (temizlendi): %1$d satır</string>
 </resources>

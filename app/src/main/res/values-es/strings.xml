@@ -237,6 +237,7 @@
     <string name="dashboard_update_recovery_failed">Recuperación fallida</string>
     <string name="dashboard_update_action_cooldown">El reintento automático está en enfriamiento</string>
     <string name="dashboard_update_action_manual_exhausted">El reintento manual ya se usó durante el enfriamiento</string>
+    <string name="settings_recovery_install_confirm_message">⚠️ La reinstalación de recuperación volverá a instalar todo el entorno principal de la app.\n\nTus datos de usuario (chats/sesiones) no se eliminarán, pero la recuperación puede tardar varios minutos.\n\nNo cierres ni fuerces la detención de la app mientras la recuperación esté en curso.</string>
     <string name="settings_api_key_get_link">Obtener clave API de %1$s →</string>
     <string name="bug_report_included_gateway_logs">- Registros de UI del gateway (depurados): %1$d líneas</string>
 </resources>

@@ -27,6 +27,17 @@ internal object RuntimeRecoverableFailureDetector {
                 state.errorMessage.contains("permission denied", ignoreCase = true)
             )
 
+        val hasMissingOpenClawModule = scopedLogs.any { line ->
+            (line.contains("ERR_MODULE_NOT_FOUND", ignoreCase = true) &&
+                line.contains("/usr/local/lib/node_modules/openclaw", ignoreCase = true)) ||
+                line.contains("Cannot find module '/usr/local/lib/node_modules/openclaw", ignoreCase = true)
+        } || (
+            state.errorMessage?.contains("ERR_MODULE_NOT_FOUND", ignoreCase = true) == true &&
+                state.errorMessage.contains("/usr/local/lib/node_modules/openclaw", ignoreCase = true)
+            ) || (
+            state.errorMessage?.contains("Cannot find module '/usr/local/lib/node_modules/openclaw", ignoreCase = true) == true
+            )
+
         val hasExit127 = state.errorMessage?.contains("exit: 127", ignoreCase = true) == true ||
             scopedLogs.any { line ->
                 line.contains("exit code: 127", ignoreCase = true) ||
@@ -35,11 +46,15 @@ internal object RuntimeRecoverableFailureDetector {
         val hasOpenClawSignal = scopedLogs.any { it.contains("openclaw", ignoreCase = true) } ||
             state.errorMessage?.contains("openclaw", ignoreCase = true) == true
 
-        if (!hasOpenClawPermissionDenied && !(hasExit127 && hasOpenClawSignal)) return null
+        if (!hasOpenClawPermissionDenied && !(hasExit127 && hasOpenClawSignal) && !hasMissingOpenClawModule) return null
 
         val detailMessage = scopedLogs.lastOrNull { line ->
             line.contains("openclaw", ignoreCase = true) &&
                 line.contains("permission denied", ignoreCase = true)
+        } ?: scopedLogs.lastOrNull { line ->
+            (line.contains("ERR_MODULE_NOT_FOUND", ignoreCase = true) &&
+                line.contains("/usr/local/lib/node_modules/openclaw", ignoreCase = true)) ||
+                line.contains("Cannot find module '/usr/local/lib/node_modules/openclaw", ignoreCase = true)
         } ?: state.errorMessage?.takeIf { it.isNotBlank() } ?: scopedLogs.lastOrNull()
 
         return BundleUpdateFailureState(

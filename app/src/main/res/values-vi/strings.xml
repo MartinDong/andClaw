@@ -225,6 +225,7 @@
     <string name="dashboard_update_recovery_failed">Khôi phục thất bại</string>
     <string name="dashboard_update_action_cooldown">Tự động thử lại đang trong thời gian chờ</string>
     <string name="dashboard_update_action_manual_exhausted">Đã dùng thử lại thủ công trong thời gian chờ</string>
+    <string name="settings_recovery_install_confirm_message">⚠️ Cài đặt khôi phục sẽ cài đặt lại toàn bộ môi trường chạy cốt lõi của ứng dụng.\n\nDữ liệu người dùng của bạn (chat/phiên) sẽ không bị xóa, nhưng quá trình khôi phục có thể mất vài phút.\n\nTrong khi khôi phục đang chạy, đừng đóng hoặc buộc dừng ứng dụng.</string>
     <string name="settings_api_key_get_link">Lấy khóa API %1$s →</string>
     <string name="bug_report_included_gateway_logs">- Nhật ký UI gateway (đã làm sạch): %1$d dòng</string>
 </resources>

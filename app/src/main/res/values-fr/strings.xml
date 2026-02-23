@@ -226,6 +226,7 @@
     <string name="dashboard_update_recovery_failed">Échec de la récupération</string>
     <string name="dashboard_update_action_cooldown">La nouvelle tentative auto est en période de refroidissement</string>
     <string name="dashboard_update_action_manual_exhausted">La nouvelle tentative manuelle a déjà été utilisée pendant la période de refroidissement</string>
+    <string name="settings_recovery_install_confirm_message">⚠️ La réinstallation de récupération réinstallera l’ensemble de l’environnement principal de l’application.\n\nVos données utilisateur (chats/sessions) ne seront pas supprimées, mais la récupération peut prendre plusieurs minutes.\n\nNe fermez pas l’application et ne forcez pas son arrêt tant que la récupération est en cours.</string>
     <string name="settings_api_key_get_link">Obtenir la clé API %1$s →</string>
     <string name="bug_report_included_gateway_logs">- Journaux UI du gateway (nettoyés) : %1$d lignes</string>
 </resources>

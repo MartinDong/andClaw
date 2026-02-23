@@ -225,6 +225,7 @@
     <string name="dashboard_update_recovery_failed">Ошибка восстановления</string>
     <string name="dashboard_update_action_cooldown">Автоповтор сейчас на кулдауне</string>
     <string name="dashboard_update_action_manual_exhausted">Ручной повтор уже использован во время кулдауна</string>
+    <string name="settings_recovery_install_confirm_message">⚠️ Восстановительная переустановка заново установит всю основную среду приложения.\n\nВаши пользовательские данные (чаты/сессии) не будут удалены, но восстановление может занять несколько минут.\n\nНе закрывайте приложение и не выполняйте принудительную остановку, пока идет восстановление.</string>
     <string name="settings_api_key_get_link">Получить API-ключ %1$s →</string>
     <string name="bug_report_included_gateway_logs">- Логи UI шлюза (очищенные): %1$d строк</string>
 </resources>

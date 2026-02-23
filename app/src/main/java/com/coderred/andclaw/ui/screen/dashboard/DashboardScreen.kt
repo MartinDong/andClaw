@@ -49,6 +49,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
@@ -86,12 +87,16 @@ import androidx.core.content.ContextCompat
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.coderred.andclaw.R
 import com.coderred.andclaw.data.GatewayStatus
+import com.coderred.andclaw.data.PairingRequest
 import com.coderred.andclaw.proot.BundleUpdateFailureState
 import com.coderred.andclaw.ui.component.ModelSelectionDialog
 import com.coderred.andclaw.ui.component.SessionLogsDialog
@@ -121,6 +126,7 @@ fun DashboardScreen(
     val isLoadingModels by viewModel.isLoadingModels.collectAsState()
     val modelLoadError by viewModel.modelLoadError.collectAsState()
     val pairingRequests by viewModel.pairingRequests.collectAsState()
+    val pairingActionProgress by viewModel.pairingActionProgress.collectAsState()
     val sessionLogs by viewModel.sessionLogs.collectAsState()
     val isLoadingSessionLogs by viewModel.isLoadingSessionLogs.collectAsState()
     val bundleUpdateFailure by viewModel.bundleUpdateFailure.collectAsState()
@@ -231,8 +237,9 @@ fun DashboardScreen(
                 if (pairingRequests.isNotEmpty()) {
                     PairingRequestsCard(
                         requests = pairingRequests,
-                        onApprove = { req -> viewModel.approvePairing(req.channel, req.code) },
-                        onDeny = { req -> viewModel.denyPairing(req.channel, req.code) },
+                        actionsEnabled = pairingActionProgress == null,
+                        onApprove = { req -> viewModel.approvePairing(req) },
+                        onDeny = { req -> viewModel.denyPairing(req) },
                     )
                 }
 
@@ -305,6 +312,16 @@ fun DashboardScreen(
                     Text(stringResource(R.string.dashboard_apikey_dismiss))
                 }
             },
+        )
+    }
+
+    pairingActionProgress?.let { progress ->
+        PairingActionProgressDialog(
+            actionLabel = when (progress.action) {
+                PairingActionType.APPROVE -> stringResource(R.string.pairing_approve)
+                PairingActionType.DENY -> stringResource(R.string.pairing_deny)
+            },
+            request = progress.request,
         )
     }
 }
@@ -942,9 +959,10 @@ private fun formatUptime(seconds: Long): String {
 
 @Composable
 private fun PairingRequestsCard(
-    requests: List<com.coderred.andclaw.data.PairingRequest>,
-    onApprove: (com.coderred.andclaw.data.PairingRequest) -> Unit,
-    onDeny: (com.coderred.andclaw.data.PairingRequest) -> Unit,
+    requests: List<PairingRequest>,
+    actionsEnabled: Boolean,
+    onApprove: (PairingRequest) -> Unit,
+    onDeny: (PairingRequest) -> Unit,
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -977,6 +995,7 @@ private fun PairingRequestsCard(
             requests.forEach { request ->
                 PairingRequestItem(
                     request = request,
+                    actionsEnabled = actionsEnabled,
                     onApprove = { onApprove(request) },
                     onDeny = { onDeny(request) },
                 )
@@ -987,7 +1006,8 @@ private fun PairingRequestsCard(
 
 @Composable
 private fun PairingRequestItem(
-    request: com.coderred.andclaw.data.PairingRequest,
+    request: PairingRequest,
+    actionsEnabled: Boolean,
     onApprove: () -> Unit,
     onDeny: () -> Unit,
 ) {
@@ -1025,6 +1045,7 @@ private fun PairingRequestItem(
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedButton(
                     onClick = onDeny,
+                    enabled = actionsEnabled,
                     contentPadding = ButtonDefaults.ButtonWithIconContentPadding,
                 ) {
                     Text(
@@ -1034,6 +1055,7 @@ private fun PairingRequestItem(
                 }
                 Button(
                     onClick = onApprove,
+                    enabled = actionsEnabled,
                     contentPadding = ButtonDefaults.ButtonWithIconContentPadding,
                 ) {
                     Text(
@@ -1041,6 +1063,53 @@ private fun PairingRequestItem(
                         style = MaterialTheme.typography.labelMedium,
                     )
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun PairingActionProgressDialog(
+    actionLabel: String,
+    request: PairingRequest,
+) {
+    Dialog(
+        onDismissRequest = { },
+        properties = DialogProperties(
+            dismissOnBackPress = false,
+            dismissOnClickOutside = false,
+            usePlatformDefaultWidth = false,
+        ),
+    ) {
+        Surface(
+            modifier = Modifier.fillMaxWidth(0.88f),
+            shape = RoundedCornerShape(24.dp),
+            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+            tonalElevation = 8.dp,
+        ) {
+            Column(
+                modifier = Modifier.padding(horizontal = 24.dp, vertical = 28.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(14.dp),
+            ) {
+                CircularProgressIndicator(modifier = Modifier.size(48.dp))
+                Text(
+                    text = "$actionLabel...",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Text(
+                    text = if (request.username.isNotBlank()) request.username else request.code,
+                    style = MaterialTheme.typography.bodyMedium,
+                    textAlign = TextAlign.Center,
+                )
+                Text(
+                    text = stringResource(R.string.pairing_code_label, request.code),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontFamily = FontFamily.Monospace,
+                    textAlign = TextAlign.Center,
+                )
             }
         }
     }
