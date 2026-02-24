@@ -54,7 +54,6 @@ import com.coderred.andclaw.R
 @Composable
 fun OnboardingScreen(
     authCallbackUri: Uri? = null,
-    onOnboardingComplete: () -> Unit,
     viewModel: OnboardingViewModel = viewModel(),
 ) {
     val state by viewModel.state.collectAsState()
@@ -65,7 +64,7 @@ fun OnboardingScreen(
     // OAuth 콜백 처리
     LaunchedEffect(authCallbackUri) {
         authCallbackUri?.let { uri ->
-            viewModel.handleAuthCallback(uri, onOnboardingComplete)
+            viewModel.handleAuthCallback(uri)
         }
     }
 
@@ -221,7 +220,7 @@ fun OnboardingScreen(
 
                 Button(
                     onClick = {
-                        viewModel.saveManualApiKey(apiKeyText.trim(), onOnboardingComplete)
+                        viewModel.saveManualApiKey(apiKeyText.trim())
                     },
                     enabled = apiKeyText.trim().length > 10,
                     modifier = Modifier
@@ -277,7 +276,7 @@ fun OnboardingScreen(
 
         // 4. Skip — TextButton이지만 터치 영역 48dp 확보
         TextButton(
-            onClick = { viewModel.skip(onOnboardingComplete) },
+            onClick = { viewModel.skip() },
             modifier = Modifier
                 .fillMaxWidth()
                 .height(48.dp),

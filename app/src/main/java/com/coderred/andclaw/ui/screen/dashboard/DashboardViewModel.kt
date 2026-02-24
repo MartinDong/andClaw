@@ -185,10 +185,7 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
         restartJob = viewModelScope.launch {
             delay(delayMs)
             val context = getApplication<Application>()
-            val intent = Intent(context, GatewayService::class.java).apply {
-                action = GatewayService.ACTION_RESTART
-            }
-            context.startForegroundService(intent)
+            GatewayService.restart(context, userInitiated = false)
         }
     }
 
@@ -289,6 +286,17 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
                 val qrData = withContext(Dispatchers.IO) { client.startWhatsAppLogin() }
                 if (qrData == null) {
                     val reason = client.getLastCallErrorMessage()
+                    if (client.isLastCallWhatsAppAlreadyLinked()) {
+                        shouldRestartAfterWhatsAppPairing = true
+                        _whatsappQrState.value = WhatsAppQrState.Connected
+                        delay(1500)
+                        _whatsappQrState.value = WhatsAppQrState.Idle
+                        restartGatewayIfRunning()
+                        shouldRestartAfterWhatsAppPairing = false
+                        client.close()
+                        wsClient = null
+                        return@launch
+                    }
                     val message = if (reason.isNullOrBlank()) {
                         "Failed to get QR code"
                     } else {

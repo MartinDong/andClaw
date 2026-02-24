@@ -45,7 +45,6 @@ import com.coderred.andclaw.data.SetupStep
 
 @Composable
 fun SetupScreen(
-    onSetupComplete: () -> Unit,
     viewModel: SetupViewModel = viewModel(),
 ) {
     val state by viewModel.state.collectAsState()
@@ -144,18 +143,6 @@ fun SetupScreen(
                             modifier = Modifier.size(40.dp),
                         )
                         Spacer(modifier = Modifier.height(16.dp))
-                        Button(
-                            onClick = onSetupComplete,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(56.dp),
-                            shape = RoundedCornerShape(16.dp),
-                        ) {
-                            Text(
-                                stringResource(R.string.setup_btn_next_step),
-                                style = MaterialTheme.typography.titleMedium,
-                            )
-                        }
                     }
                 }
             }
@@ -197,7 +184,7 @@ fun SetupScreen(
                         }
                         Spacer(modifier = Modifier.height(16.dp))
                         Button(
-                            onClick = { viewModel.startSetup(onSetupComplete) },
+                            onClick = { viewModel.startSetup() },
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .height(48.dp),
@@ -265,7 +252,7 @@ fun SetupScreen(
             Spacer(modifier = Modifier.height(24.dp))
 
             Button(
-                onClick = { viewModel.startSetup(onSetupComplete) },
+                onClick = { viewModel.startSetup() },
                 enabled = viewModel.hasEnoughStorage,
                 modifier = Modifier
                     .fillMaxWidth()

@@ -15,32 +15,51 @@ import com.coderred.andclaw.AndClawApp
 import com.coderred.andclaw.MainActivity
 import com.coderred.andclaw.R
 import com.coderred.andclaw.data.GatewayStatus
+import com.coderred.andclaw.data.PairingRequest
 import com.coderred.andclaw.data.PreferencesManager
 import com.coderred.andclaw.proot.BundleUpdateOutcome
 import com.coderred.andclaw.proot.ProcessManager
+import com.coderred.andclaw.receiver.GatewayWatchdogReceiver
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
-import com.coderred.andclaw.data.PairingRequest
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
+import java.util.concurrent.atomic.AtomicLong
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 class GatewayService : Service() {
+
+    private enum class GatewayActionType {
+        START,
+        RESTART,
+        STOP,
+    }
 
     companion object {
         const val CHANNEL_ID = "andclaw_gateway"
         const val PAIRING_CHANNEL_ID = "andclaw_pairing"
         const val NOTIFICATION_ID = 1
         const val PAIRING_NOTIFICATION_ID = 2
+        private const val START_WAKE_LOCK_TIMEOUT_MS = 120_000L
+        // Bundle update policy 기본 최대치(20분) + startup final state 대기(2분) + 여유(1분)
+        private const val START_WAKE_LOCK_TIMEOUT_BACKGROUND_MS = 23L * 60L * 1000L
+        private const val START_TERMINAL_WAIT_TIMEOUT_MS = 120_000L
+        private const val RESTART_WAKE_LOCK_TIMEOUT_MS = 120_000L
         const val ACTION_START = "com.coderred.andclaw.action.START"
         const val ACTION_STOP = "com.coderred.andclaw.action.STOP"
         const val ACTION_RESTART = "com.coderred.andclaw.action.RESTART"
+        private const val EXTRA_FROM_WATCHDOG = "from_watchdog"
+        private const val EXTRA_USER_INITIATED = "user_initiated"
 
         private var _instance: GatewayService? = null
 
@@ -48,9 +67,23 @@ class GatewayService : Service() {
         val processManager: ProcessManager?
             get() = _instance?.pm
 
-        fun start(context: Context) {
+        fun start(context: Context, fromWatchdog: Boolean = false, userInitiated: Boolean = true) {
             val intent = Intent(context, GatewayService::class.java).apply {
                 action = ACTION_START
+                putExtra(EXTRA_FROM_WATCHDOG, fromWatchdog)
+                putExtra(EXTRA_USER_INITIATED, userInitiated)
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                context.startForegroundService(intent)
+            } else {
+                context.startService(intent)
+            }
+        }
+
+        fun restart(context: Context, userInitiated: Boolean = true) {
+            val intent = Intent(context, GatewayService::class.java).apply {
+                action = ACTION_RESTART
+                putExtra(EXTRA_USER_INITIATED, userInitiated)
             }
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 context.startForegroundService(intent)
@@ -69,9 +102,13 @@ class GatewayService : Service() {
 
     private lateinit var pm: ProcessManager
     private lateinit var prefs: PreferencesManager
-    private var wakeLock: PowerManager.WakeLock? = null
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private var actionJob: Job? = null
+    private var actionJobType: GatewayActionType? = null
+    private val actionSequence = AtomicLong(0L)
+    private val desiredRunningMutex = Mutex()
+    private val wakeLockGuard = Any()
+    private var activeWakeLock: PowerManager.WakeLock? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -112,62 +149,51 @@ class GatewayService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        when (intent?.action) {
-            ACTION_START -> {
-                acquireWakeLock()
-                actionJob?.cancel()
-                actionJob = serviceScope.launch(Dispatchers.IO) {
-                    val app = application as AndClawApp
-                    try {
-                        val result = app.setupManager.updateBundleIfNeededWithPolicy()
-                        if (result.outcome == BundleUpdateOutcome.FAILED) {
-                            android.util.Log.e("GatewayService", "Bundle update policy run failed: ${result.errorMessage}")
-                        }
-                    } catch (error: CancellationException) {
-                        throw error
-                    } catch (error: Exception) {
-                        android.util.Log.e("GatewayService", "Bundle update failed during ACTION_START", error)
-                    }
-
-                    val apiProvider = prefs.apiProvider.first()
-                    val apiKey = prefs.apiKey.first()
-                    val selectedModel = prefs.selectedModel.first()
-                    val channelConfig = prefs.channelConfig.first()
-                    val modelReasoning = prefs.selectedModelReasoning.first()
-                    val modelImages = prefs.selectedModelImages.first()
-                    val modelContext = prefs.selectedModelContext.first()
-                    val modelMaxOutput = prefs.selectedModelMaxOutput.first()
-                    val braveSearchApiKey = prefs.braveSearchApiKey.first()
-
-                    pm.start(apiProvider, apiKey, selectedModel, channelConfig, modelReasoning, modelImages, modelContext, modelMaxOutput, braveSearchApiKey)
-                    prefs.setGatewayWasRunning(true)
+        val action = intent?.action
+        if (action == null) {
+            // START_STICKY 재생성(null intent) 시 이전 사용자 의도가 running이면 복구를 재시도한다.
+            runAction(GatewayActionType.START, startId) { actionToken, actionStartId ->
+                val shouldRecover = prefs.gatewayWasRunning.first() && prefs.isSetupComplete.first()
+                if (!shouldRecover) {
+                    GatewayWatchdogReceiver.cancel(applicationContext)
+                    stopServiceForeground(actionStartId)
+                    return@runAction
                 }
+                handleStart(
+                    fromWatchdog = true,
+                    userInitiated = false,
+                    actionToken = actionToken,
+                    startId = actionStartId,
+                )
             }
-            ACTION_STOP -> {
-                actionJob?.cancel()
-                actionJob = serviceScope.launch(Dispatchers.IO) {
-                    pm.stop()
-                    prefs.setGatewayWasRunning(false)
-                    withContext(Dispatchers.Main) {
-                        releaseWakeLock()
-                        stopForeground(STOP_FOREGROUND_REMOVE)
-                        stopSelf()
-                    }
+            return START_STICKY
+        }
+
+        val fromWatchdog = intent.getBooleanExtra(EXTRA_FROM_WATCHDOG, false)
+        val userInitiated = intent.getBooleanExtra(EXTRA_USER_INITIATED, true)
+        when (action) {
+            ACTION_START -> {
+                runAction(GatewayActionType.START, startId) { actionToken, actionStartId ->
+                    handleStart(
+                        fromWatchdog = fromWatchdog,
+                        userInitiated = userInitiated,
+                        actionToken = actionToken,
+                        startId = actionStartId,
+                    )
                 }
             }
             ACTION_RESTART -> {
-                actionJob?.cancel()
-                actionJob = serviceScope.launch(Dispatchers.IO) {
-                    val apiProvider = prefs.apiProvider.first()
-                    val apiKey = prefs.apiKey.first()
-                    val selectedModel = prefs.selectedModel.first()
-                    val channelConfig = prefs.channelConfig.first()
-                    val modelReasoning = prefs.selectedModelReasoning.first()
-                    val modelImages = prefs.selectedModelImages.first()
-                    val modelContext = prefs.selectedModelContext.first()
-                    val modelMaxOutput = prefs.selectedModelMaxOutput.first()
-                    val braveSearchApiKey = prefs.braveSearchApiKey.first()
-                    pm.restart(apiProvider, apiKey, selectedModel, channelConfig, modelReasoning, modelImages, modelContext, modelMaxOutput, braveSearchApiKey)
+                runAction(GatewayActionType.RESTART, startId) { actionToken, actionStartId ->
+                    handleRestart(
+                        userInitiated = userInitiated,
+                        actionToken = actionToken,
+                        startId = actionStartId,
+                    )
+                }
+            }
+            ACTION_STOP -> {
+                runAction(GatewayActionType.STOP, startId) { actionToken, actionStartId ->
+                    handleStop(actionToken = actionToken, startId = actionStartId)
                 }
             }
         }
@@ -177,8 +203,8 @@ class GatewayService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onDestroy() {
+        releaseActiveWakeLock()
         pm.stop()
-        releaseWakeLock()
         serviceScope.cancel()
         _instance = null
         super.onDestroy()
@@ -276,22 +302,241 @@ class GatewayService : Service() {
 
     // ── WakeLock ──
 
-    private fun acquireWakeLock() {
-        if (wakeLock == null) {
-            val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
-            @Suppress("deprecation")
-            wakeLock = pm.newWakeLock(
-                PowerManager.PARTIAL_WAKE_LOCK,
-                "andClaw::GatewayWakeLock"
-            ).apply {
-                acquire()
+    private suspend fun handleStart(
+        fromWatchdog: Boolean,
+        userInitiated: Boolean,
+        actionToken: Long,
+        startId: Int,
+    ) {
+        if (!isActionCurrent(actionToken)) return
+
+        if (fromWatchdog) {
+            val shouldKeepRunning = prefs.gatewayWasRunning.first() && prefs.isSetupComplete.first()
+            if (!shouldKeepRunning) {
+                GatewayWatchdogReceiver.cancel(applicationContext)
+                stopServiceForeground(startId)
+                return
             }
+        }
+
+        if (!isActionCurrent(actionToken)) return
+
+        val startWakeLockTimeoutMs = resolveStartWakeLockTimeoutMs(
+            fromWatchdog = fromWatchdog,
+            userInitiated = userInitiated,
+        )
+
+        // 사용자가 START를 요청한 순간부터 desired-running 상태를 유지한다.
+        // 단, bundle update가 끝나기 전에는 watchdog를 예약하지 않아
+        // 장시간 업데이트 중 watchdog가 STOPPED 상태를 오인해 START를 선점하는 루프를 막는다.
+        if (
+            !setDesiredRunningAndWatchdog(
+                shouldRun = true,
+                actionToken = actionToken,
+                updateWatchdog = false,
+            )
+        ) {
+            return
+        }
+
+        withTimedWakeLock(startWakeLockTimeoutMs) {
+            if (!isActionCurrent(actionToken)) return@withTimedWakeLock
+
+            val app = application as AndClawApp
+            try {
+                val result = app.setupManager.updateBundleIfNeededWithPolicy()
+                if (result.outcome == BundleUpdateOutcome.FAILED) {
+                    android.util.Log.e("GatewayService", "Bundle update policy run failed: ${result.errorMessage}")
+                }
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                android.util.Log.e("GatewayService", "Bundle update failed during ACTION_START", error)
+            }
+
+            if (!isActionCurrent(actionToken)) return@withTimedWakeLock
+
+            val apiProvider = prefs.apiProvider.first()
+            val apiKey = prefs.apiKey.first()
+            val selectedModel = prefs.selectedModel.first()
+            val channelConfig = prefs.channelConfig.first()
+            val modelReasoning = prefs.selectedModelReasoning.first()
+            val modelImages = prefs.selectedModelImages.first()
+            val modelContext = prefs.selectedModelContext.first()
+            val modelMaxOutput = prefs.selectedModelMaxOutput.first()
+            val braveSearchApiKey = prefs.braveSearchApiKey.first()
+
+            if (!setDesiredRunningAndWatchdog(shouldRun = true, actionToken = actionToken)) {
+                return@withTimedWakeLock
+            }
+
+            if (!isActionCurrent(actionToken)) return@withTimedWakeLock
+            pm.start(
+                apiProvider,
+                apiKey,
+                selectedModel,
+                channelConfig,
+                modelReasoning,
+                modelImages,
+                modelContext,
+                modelMaxOutput,
+                braveSearchApiKey,
+            )
+
+            val finalStatus = awaitGatewayStartupTerminalState(START_TERMINAL_WAIT_TIMEOUT_MS)
+            if (!isActionCurrent(actionToken)) return@withTimedWakeLock
+            handleStartupOutcome(finalStatus, actionToken)
         }
     }
 
-    private fun releaseWakeLock() {
-        wakeLock?.let { if (it.isHeld) it.release() }
-        wakeLock = null
+    private suspend fun handleRestart(userInitiated: Boolean, actionToken: Long, startId: Int) {
+        if (!isActionCurrent(actionToken)) return
+
+        if (!userInitiated) {
+            val shouldKeepRunning = prefs.gatewayWasRunning.first() && prefs.isSetupComplete.first()
+            val status = pm.gatewayState.value.status
+            val alreadyActive =
+                status == GatewayStatus.RUNNING || status == GatewayStatus.STARTING
+            if (!shouldKeepRunning && !alreadyActive) {
+                GatewayWatchdogReceiver.cancel(applicationContext)
+                stopServiceForeground(startId)
+                return
+            }
+        }
+
+        // RESTART는 사용자 의도상 running 유지이므로 즉시 desired-running=true를 반영한다.
+        if (!setDesiredRunningAndWatchdog(shouldRun = true, actionToken = actionToken)) return
+
+        withTimedWakeLock(RESTART_WAKE_LOCK_TIMEOUT_MS) {
+            if (!isActionCurrent(actionToken)) return@withTimedWakeLock
+
+            val apiProvider = prefs.apiProvider.first()
+            val apiKey = prefs.apiKey.first()
+            val selectedModel = prefs.selectedModel.first()
+            val channelConfig = prefs.channelConfig.first()
+            val modelReasoning = prefs.selectedModelReasoning.first()
+            val modelImages = prefs.selectedModelImages.first()
+            val modelContext = prefs.selectedModelContext.first()
+            val modelMaxOutput = prefs.selectedModelMaxOutput.first()
+            val braveSearchApiKey = prefs.braveSearchApiKey.first()
+
+            if (!isActionCurrent(actionToken)) return@withTimedWakeLock
+            pm.restart(
+                apiProvider,
+                apiKey,
+                selectedModel,
+                channelConfig,
+                modelReasoning,
+                modelImages,
+                modelContext,
+                modelMaxOutput,
+                braveSearchApiKey,
+            )
+            val finalStatus = awaitGatewayStartupTerminalState(RESTART_WAKE_LOCK_TIMEOUT_MS)
+            if (!isActionCurrent(actionToken)) return@withTimedWakeLock
+            handleStartupOutcome(finalStatus, actionToken)
+        }
+    }
+
+    private suspend fun handleStop(actionToken: Long, startId: Int) {
+        // STOP 선점 시 in-flight START/RESTART가 늦게 unwind 되더라도 즉시 wake lock을 해제한다.
+        releaseActiveWakeLock()
+
+        // STOP 요청은 최신 토큰 여부와 무관하게 항상 desired-running=false를 강제 반영한다.
+        forceDesiredStopped()
+        pm.stop()
+        stopServiceForeground(startId)
+    }
+
+    private suspend fun handleStartupOutcome(finalStatus: GatewayStatus?, actionToken: Long) {
+        if (!isActionCurrent(actionToken)) return
+
+        if (finalStatus == GatewayStatus.RUNNING) {
+            markDesiredRunningAndScheduleWatchdog(actionToken)
+            return
+        }
+
+        if (finalStatus == null) {
+            // STARTING 상태 고착 방지
+            pm.stop()
+        }
+        // START/RESTART 실패는 사용자 의도를 꺾지 않는다.
+        // transient failure 후에도 watchdog/boot/update 경로가 복구를 계속 시도해야 한다.
+        markDesiredRunningAndScheduleWatchdog(actionToken)
+    }
+
+    private suspend fun markDesiredRunningAndScheduleWatchdog(actionToken: Long) {
+        setDesiredRunningAndWatchdog(shouldRun = true, actionToken = actionToken)
+    }
+
+    private suspend fun forceDesiredStopped() {
+        desiredRunningMutex.withLock {
+            prefs.setGatewayWasRunning(false)
+            GatewayWatchdogReceiver.cancel(applicationContext)
+        }
+    }
+
+    private suspend fun setDesiredRunningAndWatchdog(
+        shouldRun: Boolean,
+        actionToken: Long,
+        updateWatchdog: Boolean = true,
+    ): Boolean {
+        return desiredRunningMutex.withLock {
+            if (!isActionCurrent(actionToken)) {
+                return@withLock false
+            }
+
+            prefs.setGatewayWasRunning(shouldRun)
+
+            if (!isActionCurrent(actionToken)) {
+                return@withLock false
+            }
+
+            if (updateWatchdog) {
+                if (shouldRun) {
+                    GatewayWatchdogReceiver.schedule(applicationContext)
+                } else {
+                    GatewayWatchdogReceiver.cancel(applicationContext)
+                }
+            }
+
+            isActionCurrent(actionToken)
+        }
+    }
+
+    private suspend fun <T> withTimedWakeLock(timeoutMs: Long, block: suspend () -> T): T {
+        val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
+        @Suppress("deprecation")
+        val wakeLock = powerManager.newWakeLock(
+            PowerManager.PARTIAL_WAKE_LOCK,
+            "andClaw::GatewayWakeLock",
+        ).apply {
+            setReferenceCounted(false)
+            acquire(timeoutMs)
+        }
+        registerActiveWakeLock(wakeLock)
+        return try {
+            block()
+        } finally {
+            releaseWakeLockInstance(wakeLock)
+        }
+    }
+
+    private suspend fun awaitGatewayStartupTerminalState(timeoutMs: Long): GatewayStatus? {
+        val finalState = withTimeoutOrNull(timeoutMs) {
+            pm.gatewayState.first { state ->
+                state.status == GatewayStatus.RUNNING ||
+                    state.status == GatewayStatus.ERROR ||
+                    state.status == GatewayStatus.STOPPED
+            }
+        }
+        if (finalState == null) {
+            android.util.Log.w(
+                "GatewayService",
+                "Timed out waiting for gateway startup terminal state after ${timeoutMs}ms",
+            )
+        }
+        return finalState?.status
     }
 
     private fun formatUptime(seconds: Long): String {
@@ -299,5 +544,103 @@ class GatewayService : Service() {
         val m = (seconds % 3600) / 60
         val s = seconds % 60
         return "%02d:%02d:%02d".format(h, m, s)
+    }
+
+    private fun runAction(
+        actionType: GatewayActionType,
+        startId: Int,
+        block: suspend (Long, Int) -> Unit,
+    ) {
+        val actionToken = actionSequence.incrementAndGet()
+        val previousAction = actionJob
+        val previousActionType = actionJobType
+        actionJobType = actionType
+        actionJob = serviceScope.launch {
+            try {
+                if (actionType == GatewayActionType.STOP) {
+                    // STOP은 지연 없이 선점한다. 오래 걸리는 START/RESTART 종료를 기다리지 않는다.
+                    previousAction?.cancel()
+                    if (previousAction != null) {
+                        val stopToken = actionToken
+                        serviceScope.launch {
+                            try {
+                                previousAction.join()
+                            } catch (_: CancellationException) {
+                                // ignore
+                            }
+                            withContext(Dispatchers.IO) {
+                                if (!isActionCurrent(stopToken)) return@withContext
+                                // STOP 선점 이후 이전 START/RESTART가 늦게 반영한 상태를 한 번 더 정리한다.
+                                setDesiredRunningAndWatchdog(shouldRun = false, actionToken = stopToken)
+                                pm.stop()
+                            }
+                        }
+                    }
+                } else {
+                    if (previousActionType == GatewayActionType.STOP) {
+                        // STOP 이후 START/RESTART가 들어오면 STOP 완료를 보장한 뒤 진행한다.
+                        previousAction?.join()
+                    } else {
+                        previousAction?.cancelAndJoin()
+                    }
+                }
+                withContext(Dispatchers.IO) {
+                    if (!isActionCurrent(actionToken)) return@withContext
+                    block(actionToken, startId)
+                }
+            } finally {
+                if (isActionCurrent(actionToken)) {
+                    actionJobType = null
+                }
+            }
+        }
+    }
+
+    private fun isActionCurrent(actionToken: Long): Boolean = actionSequence.get() == actionToken
+
+    private fun resolveStartWakeLockTimeoutMs(fromWatchdog: Boolean, userInitiated: Boolean): Long {
+        if (fromWatchdog || !userInitiated) return START_WAKE_LOCK_TIMEOUT_BACKGROUND_MS
+        val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
+        return if (powerManager.isInteractive) {
+            START_WAKE_LOCK_TIMEOUT_MS
+        } else {
+            START_WAKE_LOCK_TIMEOUT_BACKGROUND_MS
+        }
+    }
+
+    private suspend fun stopServiceForeground(startId: Int) {
+        withContext(Dispatchers.Main) {
+            if (stopSelfResult(startId)) {
+                stopForeground(STOP_FOREGROUND_REMOVE)
+            }
+        }
+    }
+
+    private fun registerActiveWakeLock(wakeLock: PowerManager.WakeLock) {
+        synchronized(wakeLockGuard) {
+            activeWakeLock = wakeLock
+        }
+    }
+
+    private fun releaseWakeLockInstance(wakeLock: PowerManager.WakeLock) {
+        synchronized(wakeLockGuard) {
+            if (activeWakeLock === wakeLock) {
+                activeWakeLock = null
+            }
+        }
+        if (wakeLock.isHeld) {
+            wakeLock.release()
+        }
+    }
+
+    private fun releaseActiveWakeLock() {
+        val wakeLock = synchronized(wakeLockGuard) {
+            val current = activeWakeLock
+            activeWakeLock = null
+            current
+        }
+        if (wakeLock?.isHeld == true) {
+            wakeLock.release()
+        }
     }
 }

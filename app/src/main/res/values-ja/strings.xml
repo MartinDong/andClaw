@@ -177,6 +177,8 @@
     <string name="settings_codex_oauth_title">OpenAI Codex OAuth</string>
     <string name="settings_codex_oauth_signing_in">Signing in…</string>
     <string name="settings_channel_whatsapp">WhatsApp</string>
+    <string name="settings_channel_disconnect_action">接続を解除</string>
+    <string name="settings_channel_disconnect_in_progress">接続を解除中…</string>
     <string name="settings_channel_telegram">Telegram</string>
     <string name="settings_channel_discord">Discord</string>
     <string name="settings_discord_guild_allowlist_title">ギルド許可リスト（ID）</string>

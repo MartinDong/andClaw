@@ -176,6 +176,8 @@
     <string name="settings_codex_oauth_title">OpenAI Codex OAuth</string>
     <string name="settings_codex_oauth_signing_in">Signing in…</string>
     <string name="settings_channel_whatsapp">WhatsApp</string>
+    <string name="settings_channel_disconnect_action">Desconectar</string>
+    <string name="settings_channel_disconnect_in_progress">Desconectando…</string>
     <string name="settings_channel_telegram">Telegram</string>
     <string name="settings_channel_discord">Discord</string>
     <string name="settings_discord_guild_allowlist_title">Lista de permissão de guilds (ID)</string>

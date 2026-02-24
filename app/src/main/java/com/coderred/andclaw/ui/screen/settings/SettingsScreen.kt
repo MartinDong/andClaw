@@ -111,6 +111,10 @@ fun SettingsScreen(
     val isRecoveryInstallRunning by viewModel.isRecoveryInstallRunning.collectAsState()
     val recoveryInstallResult by viewModel.recoveryInstallResult.collectAsState()
     val whatsappQrState by viewModel.whatsappQrState.collectAsState()
+    val isWhatsAppLinked by viewModel.isWhatsAppLinked.collectAsState()
+    val isChannelDisconnecting by viewModel.isChannelDisconnecting.collectAsState()
+    val disconnectingChannelLabel by viewModel.disconnectingChannelLabel.collectAsState()
+    val channelDisconnectError by viewModel.channelDisconnectError.collectAsState()
     val isCodexAuthInProgress by viewModel.isCodexAuthInProgress.collectAsState()
     val isCodexAuthenticated by viewModel.isCodexAuthenticated.collectAsState()
     val codexAuthUrl by viewModel.codexAuthUrl.collectAsState()
@@ -141,6 +145,7 @@ fun SettingsScreen(
     var showBraveKeyDialog by remember { mutableStateOf(false) }
     var showOssLicensesDialog by remember { mutableStateOf(false) }
     var showRecoveryInstallConfirmDialog by remember { mutableStateOf(false) }
+    var showWhatsAppActionDialog by remember { mutableStateOf(false) }
     val isMaintenanceBusy = isDoctorFixRunning || isRecoveryInstallRunning
     val ossLicensesText = remember {
         runCatching {
@@ -443,8 +448,13 @@ fun SettingsScreen(
                     // WhatsApp (always-on): 토글 없이 QR 연결만 제공
                     SettingClickableRow(
                         title = stringResource(R.string.settings_channel_whatsapp),
-                        value = stringResource(R.string.whatsapp_connect_btn),
-                        onClick = { viewModel.startWhatsAppQr() },
+                        value = if (isWhatsAppLinked) {
+                            stringResource(R.string.whatsapp_connected)
+                        } else {
+                            stringResource(R.string.whatsapp_connect_btn)
+                        },
+                        enabled = !isChannelDisconnecting,
+                        onClick = { showWhatsAppActionDialog = true },
                     )
 
                     HorizontalDivider(
@@ -478,6 +488,7 @@ fun SettingsScreen(
                             onClick = { showTelegramTokenDialog = true },
                             indent = true,
                         )
+
                     }
 
                     HorizontalDivider(
@@ -706,6 +717,18 @@ fun SettingsScreen(
                 showTelegramTokenDialog = false
                 showBotRestartNotice = true
             },
+            onDisconnect = if (telegramBotToken.isNotBlank()) {
+                {
+                    showTelegramTokenDialog = false
+                    viewModel.disconnectChannel(
+                        channelId = "telegram",
+                        channelLabel = context.getString(R.string.settings_channel_telegram),
+                    )
+                }
+            } else {
+                null
+            },
+            disconnectEnabled = !isChannelDisconnecting,
             onDismiss = { showTelegramTokenDialog = false },
         )
     }
@@ -723,6 +746,18 @@ fun SettingsScreen(
                 showDiscordTokenDialog = false
                 showBotRestartNotice = true
             },
+            onDisconnect = if (discordBotToken.isNotBlank()) {
+                {
+                    showDiscordTokenDialog = false
+                    viewModel.disconnectChannel(
+                        channelId = "discord",
+                        channelLabel = context.getString(R.string.settings_channel_discord),
+                    )
+                }
+            } else {
+                null
+            },
+            disconnectEnabled = !isChannelDisconnecting,
             onDismiss = { showDiscordTokenDialog = false },
         )
     }
@@ -957,6 +992,71 @@ fun SettingsScreen(
         )
     }
 
+    if (showWhatsAppActionDialog) {
+        AlertDialog(
+            onDismissRequest = { showWhatsAppActionDialog = false },
+            shape = RoundedCornerShape(24.dp),
+            title = { Text(stringResource(R.string.settings_channel_whatsapp)) },
+            text = {
+                Text(
+                    text = if (isWhatsAppLinked) {
+                        stringResource(R.string.whatsapp_connected)
+                    } else {
+                        stringResource(R.string.settings_whatsapp_desc)
+                    },
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showWhatsAppActionDialog = false
+                        viewModel.startWhatsAppQr()
+                    },
+                ) {
+                    Text(stringResource(R.string.whatsapp_connect_btn))
+                }
+            },
+            dismissButton = {
+                if (isWhatsAppLinked) {
+                    TextButton(
+                        enabled = !isChannelDisconnecting,
+                        onClick = {
+                            showWhatsAppActionDialog = false
+                            viewModel.disconnectWhatsApp()
+                        },
+                    ) {
+                        Text(stringResource(R.string.settings_channel_disconnect_action))
+                    }
+                } else {
+                    TextButton(onClick = { showWhatsAppActionDialog = false }) {
+                        Text(stringResource(android.R.string.cancel))
+                    }
+                }
+            },
+        )
+    }
+
+    if (isChannelDisconnecting) {
+        ChannelDisconnectProgressDialog(
+            channelLabel = disconnectingChannelLabel ?: stringResource(R.string.settings_channel_whatsapp),
+        )
+    }
+
+    channelDisconnectError?.let { error ->
+        AlertDialog(
+            onDismissRequest = { viewModel.consumeChannelDisconnectError() },
+            shape = RoundedCornerShape(24.dp),
+            title = { Text(stringResource(R.string.dashboard_status_error)) },
+            text = { Text(error, style = MaterialTheme.typography.bodyMedium) },
+            confirmButton = {
+                TextButton(onClick = { viewModel.consumeChannelDisconnectError() }) {
+                    Text(stringResource(android.R.string.ok))
+                }
+            },
+        )
+    }
+
     // ── WhatsApp QR Dialog ──
     if (whatsappQrState !is WhatsAppQrState.Idle) {
         WhatsAppQrDialog(
@@ -1014,6 +1114,45 @@ private fun RecoveryInstallProgressDialog() {
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ChannelDisconnectProgressDialog(channelLabel: String) {
+    Dialog(
+        onDismissRequest = { },
+        properties = DialogProperties(
+            dismissOnBackPress = false,
+            dismissOnClickOutside = false,
+        ),
+    ) {
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(24.dp),
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surface,
+            ),
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 24.dp, vertical = 24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                CircularProgressIndicator(modifier = Modifier.size(42.dp))
+                Text(
+                    text = channelLabel,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Text(
+                    text = stringResource(R.string.settings_channel_disconnect_in_progress),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
         }
     }
@@ -1331,6 +1470,8 @@ private fun BotTokenInputDialog(
     helpUrl: String,
     helpText: String,
     onSave: (String) -> Unit,
+    onDisconnect: (() -> Unit)? = null,
+    disconnectEnabled: Boolean = true,
     onDismiss: () -> Unit,
 ) {
     var tokenText by remember { mutableStateOf(currentToken) }
@@ -1372,6 +1513,18 @@ private fun BotTokenInputDialog(
                         context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(helpUrl)))
                     },
                 )
+                if (onDisconnect != null) {
+                    TextButton(
+                        onClick = onDisconnect,
+                        enabled = disconnectEnabled,
+                        modifier = Modifier.align(Alignment.End),
+                    ) {
+                        Text(
+                            text = stringResource(R.string.settings_channel_disconnect_action),
+                            color = MaterialTheme.colorScheme.error,
+                        )
+                    }
+                }
             }
         },
         confirmButton = {

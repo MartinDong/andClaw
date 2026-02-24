@@ -36,8 +36,8 @@ android {
         applicationId = "com.coderred.andclaw"
         minSdk = 26
         targetSdk = 35
-        versionCode = 32
-        versionName = "0.0.32"
+        versionCode = 36
+        versionName = "0.0.36"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -126,6 +126,9 @@ dependencies {
 
     // Coroutines
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
+
+    // WorkManager (watchdog recovery path)
+    implementation("androidx.work:work-runtime-ktx:2.10.0")
 
     // Apache Commons Compress - tar.gz 압축 해제용
     implementation("org.apache.commons:commons-compress:1.27.1")

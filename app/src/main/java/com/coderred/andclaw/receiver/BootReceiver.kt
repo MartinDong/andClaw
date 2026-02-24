@@ -20,7 +20,7 @@ class BootReceiver : BroadcastReceiver() {
                 val prefs = PreferencesManager(context)
                 val shouldAutoStart = prefs.autoStartOnBoot.first() && prefs.isSetupComplete.first()
                 if (shouldAutoStart) {
-                    GatewayService.start(context)
+                    GatewayService.start(context, userInitiated = false)
                 }
             } finally {
                 pendingResult.finish()

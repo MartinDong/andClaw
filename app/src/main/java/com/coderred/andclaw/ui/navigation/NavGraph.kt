@@ -2,9 +2,12 @@ package com.coderred.andclaw.ui.navigation
 
 import android.net.Uri
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import androidx.navigation.compose.currentBackStackEntryAsState
 import com.coderred.andclaw.ui.screen.dashboard.DashboardScreen
 import com.coderred.andclaw.ui.screen.onboarding.OnboardingScreen
 import com.coderred.andclaw.ui.screen.settings.SettingsScreen
@@ -17,34 +20,42 @@ fun AndClawNavGraph(
     isOnboardingComplete: Boolean,
     authCallbackUri: Uri? = null,
 ) {
-    val startDestination = when {
+    val targetRoute = when {
         !isSetupComplete -> Screen.Setup.route
         !isOnboardingComplete -> Screen.Onboarding.route
         else -> Screen.Dashboard.route
     }
+    val backStackEntry by navController.currentBackStackEntryAsState()
+    val currentRoute = backStackEntry?.destination?.route
+
+    LaunchedEffect(targetRoute, currentRoute) {
+        val shouldRedirect = when (currentRoute) {
+            Screen.Setup.route -> targetRoute != Screen.Setup.route
+            Screen.Onboarding.route -> targetRoute != Screen.Onboarding.route
+            else -> false
+        }
+
+        if (shouldRedirect && currentRoute != null) {
+            navController.navigate(targetRoute) {
+                popUpTo(currentRoute) {
+                    inclusive = true
+                }
+                launchSingleTop = true
+            }
+        }
+    }
 
     NavHost(
         navController = navController,
-        startDestination = startDestination,
+        startDestination = targetRoute,
     ) {
         composable(Screen.Setup.route) {
-            SetupScreen(
-                onSetupComplete = {
-                    navController.navigate(Screen.Onboarding.route) {
-                        popUpTo(Screen.Setup.route) { inclusive = true }
-                    }
-                }
-            )
+            SetupScreen()
         }
 
         composable(Screen.Onboarding.route) {
             OnboardingScreen(
                 authCallbackUri = authCallbackUri,
-                onOnboardingComplete = {
-                    navController.navigate(Screen.Dashboard.route) {
-                        popUpTo(Screen.Onboarding.route) { inclusive = true }
-                    }
-                }
             )
         }
 

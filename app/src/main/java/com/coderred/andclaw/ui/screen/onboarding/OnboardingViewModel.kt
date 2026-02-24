@@ -47,7 +47,7 @@ class OnboardingViewModel(application: Application) : AndroidViewModel(applicati
         }
     }
 
-    fun handleAuthCallback(uri: Uri, onComplete: () -> Unit) {
+    fun handleAuthCallback(uri: Uri) {
         val code = OpenRouterAuth.extractCode(uri) ?: return
         _state.value = _state.value.copy(isConnecting = true, error = null)
 
@@ -61,7 +61,6 @@ class OnboardingViewModel(application: Application) : AndroidViewModel(applicati
                 prefs.setApiKey(apiKey)
                 prefs.setOnboardingComplete(true)
                 _state.value = _state.value.copy(isConnecting = false, isSuccess = true)
-                onComplete()
             } catch (e: Exception) {
                 _state.value = _state.value.copy(
                     isConnecting = false,
@@ -71,20 +70,18 @@ class OnboardingViewModel(application: Application) : AndroidViewModel(applicati
         }
     }
 
-    fun saveManualApiKey(apiKey: String, onComplete: () -> Unit) {
+    fun saveManualApiKey(apiKey: String) {
         viewModelScope.launch {
             prefs.setApiProvider("openrouter")
             prefs.setApiKey(apiKey)
             prefs.setOnboardingComplete(true)
             _state.value = _state.value.copy(isSuccess = true)
-            onComplete()
         }
     }
 
-    fun skip(onComplete: () -> Unit) {
+    fun skip() {
         viewModelScope.launch {
             prefs.setOnboardingComplete(true)
-            onComplete()
         }
     }
 

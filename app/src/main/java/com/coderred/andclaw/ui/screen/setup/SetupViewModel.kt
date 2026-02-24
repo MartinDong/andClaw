@@ -31,12 +31,11 @@ class SetupViewModel(application: Application) : AndroidViewModel(application) {
     val isAlreadySetup: Boolean
         get() = prootManager.isFullySetup
 
-    fun startSetup(onComplete: () -> Unit) {
+    fun startSetup() {
         viewModelScope.launch {
             val success = setupManager.runFullSetup()
             if (success) {
                 prefs.setSetupComplete(true)
-                onComplete()
             }
         }
     }

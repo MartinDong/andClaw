@@ -207,9 +207,39 @@ class GatewayWsClient(private val prootManager: ProotManager) {
         Log.d(TAG, "startWhatsAppLogin result: ${result?.toString()?.take(300)}")
         val qrDataUrl = extractQrDataUrl(result)
         if (result != null && qrDataUrl == null) {
-            lastCallErrorMessage = "Gateway response missing qrDataUrl"
+            lastCallErrorMessage = extractGatewayMessage(result) ?: "Gateway response missing qrDataUrl"
         }
         return qrDataUrl
+    }
+
+    suspend fun logoutChannel(channelId: String, accountId: String = "default"): Boolean {
+        val safeChannel = channelId.trim()
+        if (safeChannel.isBlank()) {
+            lastCallErrorMessage = "Invalid channel id"
+            return false
+        }
+
+        val params = JSONObject().apply {
+            put("channel", safeChannel)
+            put("accountId", accountId)
+        }
+        val result = callViaGatewayCli("channels.logout", params, timeoutMs = 40_000L) ?: return false
+
+        if (!result.has("loggedOut")) {
+            lastCallErrorMessage = extractGatewayMessage(result) ?: "Gateway response missing loggedOut"
+            return false
+        }
+
+        val loggedOut = result.optBoolean("loggedOut", false)
+        if (!loggedOut) {
+            lastCallErrorMessage = extractGatewayMessage(result) ?: "Channel logout failed"
+        }
+        return loggedOut
+    }
+
+    fun isLastCallWhatsAppAlreadyLinked(): Boolean {
+        val message = lastCallErrorMessage ?: return false
+        return message.contains("already linked", ignoreCase = true)
     }
 
     /**
@@ -644,6 +674,31 @@ class GatewayWsClient(private val prootManager: ProotManager) {
     private fun extractQrDataUrl(result: JSONObject?): String? {
         if (result == null) return null
         return findQrDataUrl(result)
+    }
+
+    private fun extractGatewayMessage(result: JSONObject?): String? {
+        if (result == null) return null
+        return findGatewayMessage(result)
+    }
+
+    private fun findGatewayMessage(node: JSONObject): String? {
+        val message = node.optString("message").trim()
+        if (message.isNotBlank()) return message
+
+        val errorObject = node.optJSONObject("error")
+        if (errorObject != null) {
+            val errorMessage = errorObject.optString("message").trim()
+            if (errorMessage.isNotBlank()) return errorMessage
+        }
+
+        val wrappers = listOf("payload", "result", "data", "response")
+        for (wrapper in wrappers) {
+            val child = node.optJSONObject(wrapper) ?: continue
+            val found = findGatewayMessage(child)
+            if (found != null) return found
+        }
+
+        return null
     }
 
     private fun findQrDataUrl(node: JSONObject): String? {

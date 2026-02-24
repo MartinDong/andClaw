@@ -159,6 +159,14 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
 
     private val _whatsappQrState = MutableStateFlow<WhatsAppQrState>(WhatsAppQrState.Idle)
     val whatsappQrState: StateFlow<WhatsAppQrState> = _whatsappQrState.asStateFlow()
+    private val _isWhatsAppLinked = MutableStateFlow(false)
+    val isWhatsAppLinked: StateFlow<Boolean> = _isWhatsAppLinked.asStateFlow()
+    private val _isChannelDisconnecting = MutableStateFlow(false)
+    val isChannelDisconnecting: StateFlow<Boolean> = _isChannelDisconnecting.asStateFlow()
+    private val _disconnectingChannelLabel = MutableStateFlow<String?>(null)
+    val disconnectingChannelLabel: StateFlow<String?> = _disconnectingChannelLabel.asStateFlow()
+    private val _channelDisconnectError = MutableStateFlow<String?>(null)
+    val channelDisconnectError: StateFlow<String?> = _channelDisconnectError.asStateFlow()
 
     private val _isCodexAuthInProgress = MutableStateFlow(false)
     val isCodexAuthInProgress: StateFlow<Boolean> = _isCodexAuthInProgress.asStateFlow()
@@ -197,6 +205,9 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
             if (provider == "openai-codex") {
                 _isCodexAuthenticated.value = detectCodexAuth()
             }
+        }
+        viewModelScope.launch(Dispatchers.IO) {
+            refreshWhatsAppLinkStateInternal()
         }
     }
 
@@ -599,19 +610,13 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         restartJob = viewModelScope.launch(Dispatchers.Main) {
             kotlinx.coroutines.delay(delayMs)
             val context = getApplication<Application>()
-            val intent = Intent(context, GatewayService::class.java).apply {
-                action = GatewayService.ACTION_RESTART
-            }
-            context.startForegroundService(intent)
+            GatewayService.restart(context, userInitiated = false)
         }
     }
 
     fun restartGatewayNow() {
         val context = getApplication<Application>()
-        val intent = Intent(context, GatewayService::class.java).apply {
-            action = GatewayService.ACTION_RESTART
-        }
-        context.startForegroundService(intent)
+        GatewayService.restart(context, userInitiated = true)
     }
 
     fun restartGatewayIfRunningNow() {
@@ -1431,6 +1436,113 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
 
     // ── WhatsApp QR ──
 
+    private fun hasWhatsAppCredsFile(): Boolean {
+        val rootfs = prootManager.rootfsDir ?: return false
+        val whatsappCredsRoot = File(rootfs, "root/.openclaw/credentials/whatsapp")
+        if (!whatsappCredsRoot.exists()) return false
+
+        return whatsappCredsRoot.walkTopDown()
+            .maxDepth(4)
+            .any { file ->
+                file.isFile &&
+                    file.name == "creds.json" &&
+                    file.length() > 1
+            }
+    }
+
+    private fun refreshWhatsAppLinkStateInternal() {
+        _isWhatsAppLinked.value = runCatching { hasWhatsAppCredsFile() }.getOrDefault(false)
+    }
+
+    private fun clearWhatsAppCredsOffline(): Boolean {
+        val rootfs = prootManager.rootfsDir ?: return false
+        val whatsappCredsRoot = File(rootfs, "root/.openclaw/credentials/whatsapp")
+        if (!whatsappCredsRoot.exists()) return true
+        return runCatching { whatsappCredsRoot.deleteRecursively() }.getOrDefault(false)
+    }
+
+    fun refreshWhatsAppLinkState() {
+        viewModelScope.launch(Dispatchers.IO) {
+            refreshWhatsAppLinkStateInternal()
+        }
+    }
+
+    fun disconnectChannel(channelId: String, channelLabel: String) {
+        if (_isChannelDisconnecting.value) return
+
+        _isChannelDisconnecting.value = true
+        _disconnectingChannelLabel.value = channelLabel
+        _channelDisconnectError.value = null
+
+        viewModelScope.launch {
+            try {
+                when (channelId.trim().lowercase()) {
+                    "whatsapp" -> {
+                        val client = GatewayWsClient(prootManager)
+                        try {
+                            val logoutSuccess = withContext(Dispatchers.IO) { client.logoutChannel("whatsapp") }
+                            var success = logoutSuccess
+                            if (!logoutSuccess) {
+                                val status = processManager.gatewayState.value.status
+                                val gatewayActive =
+                                    status == GatewayStatus.RUNNING || status == GatewayStatus.STARTING
+                                if (!gatewayActive) {
+                                    success = withContext(Dispatchers.IO) { clearWhatsAppCredsOffline() }
+                                }
+                            }
+
+                            if (!success) {
+                                val reason = client.getLastCallErrorMessage()
+                                _channelDisconnectError.value = reason ?: "Failed to disconnect WhatsApp"
+                                return@launch
+                            }
+                            cancelWhatsAppQr()
+                            restartGatewayIfRunning(delayMs = 0L)
+                            withContext(Dispatchers.IO) {
+                                refreshWhatsAppLinkStateInternal()
+                            }
+                        } finally {
+                            client.close()
+                        }
+                    }
+                    "telegram" -> {
+                        withContext(Dispatchers.IO) {
+                            prefs.setTelegramBotToken("")
+                            prefs.setTelegramEnabled(false)
+                            applyChannelConfigAndRestart()
+                        }
+                    }
+                    "discord" -> {
+                        withContext(Dispatchers.IO) {
+                            prefs.setDiscordBotToken("")
+                            prefs.setDiscordEnabled(false)
+                            prefs.setDiscordGuildAllowlist("")
+                            applyChannelConfigAndRestart()
+                        }
+                    }
+                    else -> {
+                        _channelDisconnectError.value = "Unsupported channel: $channelId"
+                        return@launch
+                    }
+                }
+            } catch (e: Exception) {
+                if (e is kotlinx.coroutines.CancellationException) throw e
+                _channelDisconnectError.value = e.message ?: "Failed to disconnect channel"
+            } finally {
+                _isChannelDisconnecting.value = false
+                _disconnectingChannelLabel.value = null
+            }
+        }
+    }
+
+    fun disconnectWhatsApp() {
+        disconnectChannel(channelId = "whatsapp", channelLabel = "WhatsApp")
+    }
+
+    fun consumeChannelDisconnectError() {
+        _channelDisconnectError.value = null
+    }
+
     fun startWhatsAppQr() {
         whatsappQrJob?.cancel()
         shouldRestartAfterWhatsAppPairing = false
@@ -1443,6 +1555,20 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
                 val qrData = withContext(Dispatchers.IO) { client.startWhatsAppLogin() }
                 if (qrData == null) {
                     val reason = client.getLastCallErrorMessage()
+                    if (client.isLastCallWhatsAppAlreadyLinked()) {
+                        shouldRestartAfterWhatsAppPairing = true
+                        _whatsappQrState.value = WhatsAppQrState.Connected
+                        delay(1500)
+                        _whatsappQrState.value = WhatsAppQrState.Idle
+                        restartGatewayIfRunning()
+                        shouldRestartAfterWhatsAppPairing = false
+                        withContext(Dispatchers.IO) {
+                            refreshWhatsAppLinkStateInternal()
+                        }
+                        client.close()
+                        wsClient = null
+                        return@launch
+                    }
                     val message = if (reason.isNullOrBlank()) {
                         "Failed to get QR code"
                     } else {
@@ -1466,6 +1592,9 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
                     // 페어링 완료 후 채널 설정 반영
                     restartGatewayIfRunning()
                     shouldRestartAfterWhatsAppPairing = false
+                    withContext(Dispatchers.IO) {
+                        refreshWhatsAppLinkStateInternal()
+                    }
                 } else {
                     val reason = client.getLastCallErrorMessage()
                     val message = if (reason.isNullOrBlank()) {

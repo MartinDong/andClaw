@@ -258,7 +258,8 @@ class ProcessManager(
         modelMaxOutput: Int = 4096,
         braveSearchApiKey: String = "",
     ) {
-        if (isRunning) return
+        val status = _gatewayState.value.status
+        if (status == GatewayStatus.RUNNING || status == GatewayStatus.STARTING) return
 
         lastChannelConfig = channelConfig
         lastApiProvider = apiProvider
@@ -645,8 +646,9 @@ class ProcessManager(
                 }
             }
 
+            var changed = sanitizeKnownIncompatibleConfigKeys(json)
+
             // Playwright Chromium 바이너리 경로 탐색 + proot wrapper 생성
-            var changed = false
             val playwrightDir = File(prootManager.rootfsDir, "root/.cache/ms-playwright")
             var chromePath: String? = null
             if (playwrightDir.exists()) {
@@ -780,6 +782,7 @@ class ProcessManager(
                     put("gateway", JSONObject())
                 }
             }
+            sanitizeKnownIncompatibleConfigKeys(json)
             val channels = JSONObject()
 
             if (channelConfig.whatsappEnabled) {
@@ -852,6 +855,33 @@ class ProcessManager(
         } catch (e: Exception) {
             addLog("[andClaw] Channel config failed: ${e.message}")
         }
+    }
+
+    /**
+     * 번들/버전 불일치로 주입될 수 있는 known-invalid 키를 정리한다.
+     * - channels.whatsapp.enabled (OpenClaw WhatsApp schema와 충돌)
+     * - agents.defaults.session (현행 schema 미지원)
+     */
+    private fun sanitizeKnownIncompatibleConfigKeys(root: JSONObject): Boolean {
+        var changed = false
+
+        val agents = root.optJSONObject("agents")
+        val defaults = agents?.optJSONObject("defaults")
+        if (defaults != null && defaults.has("session")) {
+            defaults.remove("session")
+            changed = true
+            addLog("[andClaw] Removed incompatible config key: agents.defaults.session")
+        }
+
+        val channels = root.optJSONObject("channels")
+        val whatsapp = channels?.optJSONObject("whatsapp")
+        if (whatsapp != null && whatsapp.has("enabled")) {
+            whatsapp.remove("enabled")
+            changed = true
+            addLog("[andClaw] Removed incompatible config key: channels.whatsapp.enabled")
+        }
+
+        return changed
     }
 
     /**
