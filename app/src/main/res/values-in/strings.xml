@@ -230,6 +230,11 @@
     <string name="settings_recovery_install_confirm_message">⚠️ Instal ulang pemulihan akan memasang ulang seluruh lingkungan inti aplikasi.\n\nData pengguna Anda (chat/sesi) tidak akan dihapus, tetapi pemulihan dapat memakan beberapa menit.\n\nJangan tutup atau paksa hentikan aplikasi selama pemulihan masih berlangsung.</string>
     <string name="settings_api_key_get_link">Dapatkan kunci API %1$s →</string>
     <string name="bug_report_included_gateway_logs">- Log UI gateway (disanitasi): %1$d baris</string>
+    <string name="onboarding_provider_openai_compatible">Kompatibel OpenAI (Endpoint kustom)</string>
+
+    <string name="onboarding_provider_nvidia">NVIDIA</string>
+    <string name="settings_openai_compatible_base_url">URL dasar (kompatibel OpenAI)</string>
+    <string name="settings_openai_compatible_model_id">ID model</string>
 </resources>
 
 

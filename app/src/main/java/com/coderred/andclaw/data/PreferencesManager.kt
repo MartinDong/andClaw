@@ -30,6 +30,9 @@ class PreferencesManager(private val context: Context) {
         private val KEY_API_KEY_ANTHROPIC = stringPreferencesKey("api_key_anthropic")
         private val KEY_API_KEY_OPENAI = stringPreferencesKey("api_key_openai")
         private val KEY_API_KEY_GOOGLE = stringPreferencesKey("api_key_google")
+        private val KEY_API_KEY_OPENAI_COMPATIBLE = stringPreferencesKey("api_key_openai_compatible")
+        private val KEY_OPENAI_COMPATIBLE_BASE_URL = stringPreferencesKey("openai_compatible_base_url")
+        private val KEY_OPENAI_COMPATIBLE_MODEL_ID = stringPreferencesKey("openai_compatible_model_id")
         private val KEY_AUTO_START_ON_BOOT = booleanPreferencesKey("auto_start_on_boot")
         private val KEY_CHARGE_ONLY_MODE = booleanPreferencesKey("charge_only_mode")
         private val KEY_OPENCLAW_VERSION = stringPreferencesKey("openclaw_version")
@@ -79,7 +82,11 @@ class PreferencesManager(private val context: Context) {
     }
 
     val apiProvider: Flow<String> = context.dataStore.data.map { prefs ->
-        prefs[KEY_API_PROVIDER] ?: "openrouter"
+        when (prefs[KEY_API_PROVIDER]) {
+            "nvidia" -> "openrouter"
+            null, "" -> "openrouter"
+            else -> prefs[KEY_API_PROVIDER] ?: "openrouter"
+        }
     }
 
     val apiKey: Flow<String> = combine(
@@ -91,9 +98,18 @@ class PreferencesManager(private val context: Context) {
             "openrouter" -> prefs[KEY_API_KEY_OPENROUTER] ?: legacy
             "anthropic" -> prefs[KEY_API_KEY_ANTHROPIC] ?: ""
             "openai" -> prefs[KEY_API_KEY_OPENAI] ?: ""
+            "openai-compatible" -> prefs[KEY_API_KEY_OPENAI_COMPATIBLE] ?: ""
             "google" -> prefs[KEY_API_KEY_GOOGLE] ?: ""
             else -> legacy
         }
+    }
+
+    val openAiCompatibleBaseUrl: Flow<String> = context.dataStore.data.map { prefs ->
+        prefs[KEY_OPENAI_COMPATIBLE_BASE_URL] ?: "https://api.openai.com/v1"
+    }
+
+    val openAiCompatibleModelId: Flow<String> = context.dataStore.data.map { prefs ->
+        prefs[KEY_OPENAI_COMPATIBLE_MODEL_ID] ?: "gpt-4o-mini"
     }
 
     val autoStartOnBoot: Flow<Boolean> = context.dataStore.data.map { prefs ->
@@ -137,7 +153,8 @@ class PreferencesManager(private val context: Context) {
     }
 
     suspend fun setApiProvider(provider: String) {
-        context.dataStore.edit { it[KEY_API_PROVIDER] = provider }
+        val normalizedProvider = if (provider == "nvidia") "openrouter" else provider
+        context.dataStore.edit { it[KEY_API_PROVIDER] = normalizedProvider }
     }
 
     suspend fun setApiKey(key: String) {
@@ -149,6 +166,7 @@ class PreferencesManager(private val context: Context) {
                 "openrouter" -> it[KEY_API_KEY_OPENROUTER] = key
                 "anthropic" -> it[KEY_API_KEY_ANTHROPIC] = key
                 "openai", "openai-codex" -> it[KEY_API_KEY_OPENAI] = key
+                "openai-compatible" -> it[KEY_API_KEY_OPENAI_COMPATIBLE] = key
                 "google" -> it[KEY_API_KEY_GOOGLE] = key
                 else -> { /* no-op */ }
             }
@@ -162,10 +180,19 @@ class PreferencesManager(private val context: Context) {
             "openrouter" -> snapshot[KEY_API_KEY_OPENROUTER] ?: legacy
             "anthropic" -> snapshot[KEY_API_KEY_ANTHROPIC].orEmpty()
             "openai" -> snapshot[KEY_API_KEY_OPENAI].orEmpty()
+            "openai-compatible" -> snapshot[KEY_API_KEY_OPENAI_COMPATIBLE].orEmpty()
             "google" -> snapshot[KEY_API_KEY_GOOGLE].orEmpty()
             else -> legacy
         }
         return key.isNotBlank()
+    }
+
+    suspend fun setOpenAiCompatibleBaseUrl(baseUrl: String) {
+        context.dataStore.edit { it[KEY_OPENAI_COMPATIBLE_BASE_URL] = baseUrl }
+    }
+
+    suspend fun setOpenAiCompatibleModelId(modelId: String) {
+        context.dataStore.edit { it[KEY_OPENAI_COMPATIBLE_MODEL_ID] = modelId }
     }
 
     suspend fun setAutoStartOnBoot(enabled: Boolean) {

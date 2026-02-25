@@ -8,7 +8,9 @@ import android.content.Intent
 import android.os.Build
 import android.os.SystemClock
 import android.util.Log
+import com.coderred.andclaw.data.GatewayStatus
 import com.coderred.andclaw.data.PreferencesManager
+import com.coderred.andclaw.service.GatewayService
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
@@ -22,6 +24,8 @@ class GatewayWatchdogReceiver : BroadcastReceiver() {
         private const val WATCHDOG_INTERVAL_MS = 30_000L
         private const val MIN_DELAY_MS = 5_000L
 
+        fun intervalMs(): Long = WATCHDOG_INTERVAL_MS
+
         fun schedule(context: Context, delayMs: Long = WATCHDOG_INTERVAL_MS) {
             val appContext = context.applicationContext
             val alarmManager = appContext.getSystemService(Context.ALARM_SERVICE) as AlarmManager
@@ -29,11 +33,19 @@ class GatewayWatchdogReceiver : BroadcastReceiver() {
             val pendingIntent = buildPendingIntent(appContext)
 
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                alarmManager.setAndAllowWhileIdle(
-                    AlarmManager.ELAPSED_REALTIME_WAKEUP,
-                    triggerAt,
-                    pendingIntent,
-                )
+                if (canUseExactAlarm(alarmManager)) {
+                    alarmManager.setExactAndAllowWhileIdle(
+                        AlarmManager.ELAPSED_REALTIME_WAKEUP,
+                        triggerAt,
+                        pendingIntent,
+                    )
+                } else {
+                    alarmManager.setAndAllowWhileIdle(
+                        AlarmManager.ELAPSED_REALTIME_WAKEUP,
+                        triggerAt,
+                        pendingIntent,
+                    )
+                }
             } else {
                 alarmManager.set(
                     AlarmManager.ELAPSED_REALTIME_WAKEUP,
@@ -47,6 +59,30 @@ class GatewayWatchdogReceiver : BroadcastReceiver() {
             val appContext = context.applicationContext
             val alarmManager = appContext.getSystemService(Context.ALARM_SERVICE) as AlarmManager
             alarmManager.cancel(buildPendingIntent(appContext))
+        }
+
+        internal fun shouldUseExactAlarm(sdkInt: Int, canScheduleExact: Boolean): Boolean {
+            if (sdkInt < Build.VERSION_CODES.M) return false
+            if (sdkInt < Build.VERSION_CODES.S) return true
+            return canScheduleExact
+        }
+
+        private fun canUseExactAlarm(alarmManager: AlarmManager): Boolean {
+            return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                try {
+                    shouldUseExactAlarm(
+                        sdkInt = Build.VERSION.SDK_INT,
+                        canScheduleExact = alarmManager.canScheduleExactAlarms(),
+                    )
+                } catch (_: SecurityException) {
+                    false
+                }
+            } else {
+                shouldUseExactAlarm(
+                    sdkInt = Build.VERSION.SDK_INT,
+                    canScheduleExact = true,
+                )
+            }
         }
 
         private fun buildPendingIntent(context: Context): PendingIntent {
@@ -79,8 +115,15 @@ class GatewayWatchdogReceiver : BroadcastReceiver() {
                     return@launch
                 }
 
-                // AlarmReceiver에서 직접 FGS를 시작하지 않고 WorkManager 경유로 복구를 시도한다.
-                GatewayWatchdogRecoveryWorker.enqueue(appContext)
+                val status = GatewayService.processManager?.gatewayState?.value?.status
+                val needsRecovery =
+                    status == null ||
+                        status == GatewayStatus.STOPPED ||
+                        status == GatewayStatus.ERROR
+                if (needsRecovery) {
+                    // AlarmReceiver에서 직접 FGS를 시작하지 않고 WorkManager 경유로 복구를 시도한다.
+                    GatewayWatchdogRecoveryWorker.enqueue(appContext)
+                }
             } catch (error: Exception) {
                 Log.e("GatewayWatchdog", "Watchdog check failed", error)
             } finally {

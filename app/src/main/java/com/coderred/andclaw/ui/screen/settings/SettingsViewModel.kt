@@ -115,6 +115,9 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     val apiKey: StateFlow<String> = prefs.apiKey
         .stateIn(viewModelScope, SharingStarted.Eagerly, "")
 
+    val openAiCompatibleBaseUrl: StateFlow<String> = prefs.openAiCompatibleBaseUrl
+        .stateIn(viewModelScope, SharingStarted.Eagerly, "https://api.openai.com/v1")
+
     val openClawVersion: StateFlow<String> = prefs.openClawVersion
         .stateIn(viewModelScope, SharingStarted.Eagerly, "")
 
@@ -239,20 +242,40 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
 
     fun setApiProvider(provider: String) {
         viewModelScope.launch(Dispatchers.IO) {
+            val previousProvider = prefs.apiProvider.first()
+            val previousSelectedModel = prefs.selectedModel.first().trim()
+            if (previousProvider == "openai-compatible" && previousSelectedModel.isNotBlank()) {
+                prefs.setOpenAiCompatibleModelId(previousSelectedModel.removePrefix("openai-compatible/"))
+            }
             prefs.setApiProvider(provider)
             val defaultModelId = when (provider) {
                 "openrouter" -> "openrouter/free"
                 "anthropic" -> "claude-sonnet-4-5"
                 "openai" -> "gpt-5-mini"
                 "openai-codex" -> "gpt-5.3-codex"
+                "openai-compatible" -> "gpt-4o-mini"
                 "google" -> "gemini-2.5-flash"
                 else -> ""
             }
-            if (defaultModelId.isNotBlank()) {
-                prefs.setSelectedModelId(defaultModelId)
+            val targetModelId = when (provider) {
+                "openai-compatible" -> prefs.openAiCompatibleModelId.first()
+                    .trim()
+                    .ifBlank { defaultModelId }
+                else -> defaultModelId
+            }
+            if (targetModelId.isNotBlank()) {
+                if (provider == "openai-compatible") {
+                    val targetMetadata = resolveOpenAiCompatibleModelMetadata(targetModelId)
+                    prefs.setSelectedModel(targetMetadata)
+                    prefs.setOpenAiCompatibleModelId(targetMetadata.id)
+                } else {
+                    prefs.setSelectedModelId(targetModelId)
+                }
+                val openAiCompatBaseUrl = prefs.openAiCompatibleBaseUrl.first()
                 processManager.ensureOpenClawConfig(
                     apiProvider = provider,
-                    selectedModel = defaultModelId,
+                    selectedModel = targetModelId,
+                    openAiCompatibleBaseUrl = openAiCompatBaseUrl,
                 )
             }
             if (provider == "openai-codex") {
@@ -269,19 +292,58 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
-    fun setSelectedModel(model: com.coderred.andclaw.data.OpenRouterModel) {
+    fun setSelectedModel(
+        model: com.coderred.andclaw.data.OpenRouterModel,
+        onApplied: (() -> Unit)? = null,
+    ) {
         viewModelScope.launch(Dispatchers.IO) {
             prefs.setSelectedModel(model)
             // config 파일도 업데이트
             val provider = prefs.apiProvider.first()
+            if (provider == "openai-compatible") {
+                prefs.setOpenAiCompatibleModelId(model.id)
+            }
+            val openAiCompatBaseUrl = prefs.openAiCompatibleBaseUrl.first()
             processManager.ensureOpenClawConfig(
                 apiProvider = provider,
                 selectedModel = model.id,
+                openAiCompatibleBaseUrl = openAiCompatBaseUrl,
                 modelReasoning = model.supportsReasoning,
                 modelImages = model.supportsImages,
                 modelContext = model.contextLength,
                 modelMaxOutput = model.maxOutputTokens,
             )
+            if (onApplied != null) {
+                withContext(Dispatchers.Main) {
+                    onApplied()
+                }
+            }
+        }
+    }
+
+    fun saveOpenAiCompatibleConfig(apiKey: String, baseUrl: String, modelId: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            prefs.setOpenAiCompatibleBaseUrl(baseUrl)
+            prefs.setApiProvider("openai-compatible")
+            prefs.setApiKey(apiKey)
+            val normalizedModelId = modelId
+                .trim()
+                .removePrefix("openai-compatible/")
+                .ifBlank { "gpt-4o-mini" }
+            val selectedModelMetadata = resolveOpenAiCompatibleModelMetadata(normalizedModelId)
+            prefs.setSelectedModel(selectedModelMetadata)
+            prefs.setOpenAiCompatibleModelId(selectedModelMetadata.id)
+            processManager.ensureOpenClawConfig(
+                apiProvider = "openai-compatible",
+                apiKey = apiKey,
+                selectedModel = normalizedModelId,
+                openAiCompatibleBaseUrl = baseUrl,
+                modelReasoning = selectedModelMetadata.supportsReasoning,
+                modelImages = selectedModelMetadata.supportsImages,
+                modelContext = selectedModelMetadata.contextLength,
+                modelMaxOutput = selectedModelMetadata.maxOutputTokens,
+            )
+            syncApiKeyAuthProfile(provider = "openai-compatible", apiKey = apiKey)
         }
     }
 
@@ -296,6 +358,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
             processManager.ensureOpenClawConfig(
                 apiProvider = provider,
                 selectedModel = modelId,
+                openAiCompatibleBaseUrl = prefs.openAiCompatibleBaseUrl.first(),
             )
 
             if (useCodexOAuth) {
@@ -309,8 +372,15 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
 
     fun shouldShowRestartPromptForProvider(provider: String, onResult: (Boolean) -> Unit) {
         viewModelScope.launch(Dispatchers.IO) {
-            val shouldShow = when (provider) {
-                "openai-codex" -> detectCodexAuth()
+            val status = processManager.gatewayState.value.status
+            val isGatewayActive = status == GatewayStatus.RUNNING ||
+                status == GatewayStatus.STARTING ||
+                status == GatewayStatus.ERROR
+
+            val shouldShow = when {
+                !isGatewayActive -> false
+                provider == "openrouter" -> true // 무료 모델은 API key 없이도 재시작 필요
+                provider == "openai-codex" -> detectCodexAuth()
                 else -> prefs.hasApiKeyForProvider(provider)
             }
             withContext(Dispatchers.Main) {
@@ -341,6 +411,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
 
                     put("OPENROUTER_API_KEY", "__andclaw_env_placeholder__")
                     put("OPENAI_API_KEY", "__andclaw_env_placeholder__")
+                    put("OPENAI_COMPAT_API_KEY", "__andclaw_env_placeholder__")
                     put("ANTHROPIC_API_KEY", "__andclaw_env_placeholder__")
                     put("GOOGLE_API_KEY", "__andclaw_env_placeholder__")
                     put("GEMINI_API_KEY", "__andclaw_env_placeholder__")
@@ -353,6 +424,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
                         when (provider) {
                             "anthropic" -> put("ANTHROPIC_API_KEY", apiKey)
                             "openai" -> put("OPENAI_API_KEY", apiKey)
+                            "openai-compatible" -> put("OPENAI_COMPAT_API_KEY", apiKey)
                             "openrouter" -> put("OPENROUTER_API_KEY", apiKey)
                             "google" -> {
                                 put("GOOGLE_API_KEY", apiKey)
@@ -716,13 +788,14 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
             }
         }
 
-        return if (entries.isNotEmpty()) {
+        val builtInModels = if (entries.isNotEmpty()) {
             entries
                 .map { it.toOpenRouterModel() }
-                .distinctBy { it.id }
         } else {
             fallbackModels
         }
+
+        return builtInModels.distinctBy { it.id }
     }
 
     private data class BuiltInModelEntry(
@@ -777,12 +850,32 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
             "openai-codex" -> listOf(
                 builtInModel("gpt-5.3-codex", contextWindow = 128_000, maxTokens = 16_384),
             )
+            "openai-compatible" -> listOf(
+                builtInModel("gpt-4o-mini", contextWindow = 128_000, maxTokens = 16_384),
+                builtInModel("gpt-4o", contextWindow = 128_000, maxTokens = 16_384),
+                builtInModel("meta/llama-3.1-8b-instruct", contextWindow = 128_000, maxTokens = 8_192),
+            )
             "google" -> listOf(
                 builtInModel("gemini-2.5-flash", contextWindow = 1_000_000, maxTokens = 8_192),
                 builtInModel("gemini-2.5-pro", contextWindow = 1_000_000, maxTokens = 8_192),
             )
             else -> emptyList()
         }
+    }
+
+    private fun resolveOpenAiCompatibleModelMetadata(modelId: String): OpenRouterModel {
+        return defaultBuiltInModels("openai-compatible")
+            .firstOrNull { it.id == modelId }
+            ?: OpenRouterModel(
+                id = modelId,
+                name = modelId,
+                contextLength = 128_000,
+                maxOutputTokens = 4_096,
+                isFree = false,
+                pricing = "Custom",
+                supportsReasoning = false,
+                supportsImages = false,
+            )
     }
 
     private fun extractProviderModelEntries(content: String, sectionName: String): List<BuiltInModelEntry> {
@@ -1335,7 +1428,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
             "openai-codex" -> "openai"
             else -> provider.lowercase()
         }
-        if (normalizedProvider !in setOf("google", "openai", "anthropic", "openrouter")) return
+        if (normalizedProvider !in setOf("google", "openai", "anthropic", "openrouter", "openai-compatible")) return
 
         runCatching {
             val profileId = "$normalizedProvider:default"

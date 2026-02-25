@@ -242,5 +242,10 @@
     <string name="bug_report_close">Close</string>
     <string name="bug_report_presence_present">present</string>
     <string name="bug_report_presence_none">none</string>
+    <string name="onboarding_provider_openai_compatible">OpenAI-compatible (Custom endpoint)</string>
+
+    <string name="onboarding_provider_nvidia">NVIDIA</string>
+    <string name="settings_openai_compatible_base_url">Base URL (OpenAI-compatible)</string>
+    <string name="settings_openai_compatible_model_id">Model ID</string>
 </resources>
 

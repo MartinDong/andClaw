@@ -230,6 +230,11 @@
     <string name="settings_recovery_install_confirm_message">⚠️ การติดตั้งกู้คืนจะติดตั้งรันไทม์หลักทั้งหมดของแอปใหม่อีกครั้ง\n\nข้อมูลผู้ใช้ของคุณ (แชต/เซสชัน) จะไม่ถูกลบ แต่การกู้คืนอาจใช้เวลาหลายนาที\n\nระหว่างที่กำลังกู้คืน อย่าปิดแอปหรือบังคับหยุดแอป</string>
     <string name="settings_api_key_get_link">รับคีย์ API ของ %1$s →</string>
     <string name="bug_report_included_gateway_logs">- บันทึก UI ของเกตเวย์ (ลบข้อมูลสำคัญแล้ว): %1$d บรรทัด</string>
+    <string name="onboarding_provider_openai_compatible">รองรับ OpenAI (เอนด์พอยต์กำหนดเอง)</string>
+
+    <string name="onboarding_provider_nvidia">NVIDIA</string>
+    <string name="settings_openai_compatible_base_url">URL พื้นฐาน (รองรับ OpenAI)</string>
+    <string name="settings_openai_compatible_model_id">รหัสโมเดล</string>
 </resources>
 
 

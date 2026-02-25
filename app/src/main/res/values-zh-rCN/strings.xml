@@ -231,6 +231,11 @@
     <string name="settings_recovery_install_confirm_message">⚠️ 恢复重装会重新安装应用的完整核心运行环境。\n\n你的用户数据（聊天/会话）不会被删除，但恢复可能需要几分钟。\n\n恢复进行期间，请不要关闭或强行停止应用。</string>
     <string name="settings_api_key_get_link">获取 %1$s API 密钥 →</string>
     <string name="bug_report_included_gateway_logs">- 网关 UI 日志（已脱敏）：%1$d 行</string>
+    <string name="onboarding_provider_openai_compatible">OpenAI 兼容（自定义端点）</string>
+
+    <string name="onboarding_provider_nvidia">NVIDIA</string>
+    <string name="settings_openai_compatible_base_url">基础 URL（OpenAI 兼容）</string>
+    <string name="settings_openai_compatible_model_id">模型 ID</string>
 </resources>
 
 

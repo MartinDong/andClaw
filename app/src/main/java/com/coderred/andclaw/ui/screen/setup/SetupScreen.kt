@@ -42,12 +42,14 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.coderred.andclaw.R
 import com.coderred.andclaw.data.SetupStep
+import com.coderred.andclaw.ui.component.KeepScreenOnEffect
 
 @Composable
 fun SetupScreen(
     viewModel: SetupViewModel = viewModel(),
 ) {
     val state by viewModel.state.collectAsState()
+    KeepScreenOnEffect(enabled = state.isInProgress)
 
     Column(
         modifier = Modifier

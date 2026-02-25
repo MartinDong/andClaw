@@ -2,6 +2,7 @@ package com.coderred.andclaw.proot
 
 import android.os.Build
 import android.os.FileObserver
+import android.os.SystemClock
 import android.util.Log
 import com.coderred.andclaw.data.ChannelConfig
 import com.coderred.andclaw.data.GatewayState
@@ -24,6 +25,36 @@ import org.json.JSONObject
 import java.io.BufferedReader
 import java.io.File
 import java.io.InputStreamReader
+import java.util.concurrent.TimeUnit
+
+internal fun parseListeningSocketInodes(procNetContent: String, port: Int): Set<String> {
+    if (port !in 1..65535) return emptySet()
+
+    val targetPortHex = port.toString(16).uppercase().padStart(4, '0')
+
+    return procNetContent
+        .lineSequence()
+        .drop(1) // 헤더 제외
+        .map { it.trim() }
+        .filter { it.isNotEmpty() }
+        .mapNotNull { line ->
+            val parts = line.split("\\s+".toRegex())
+            val localAddress = parts.getOrNull(1) ?: return@mapNotNull null
+            val state = parts.getOrNull(3) ?: return@mapNotNull null
+            val inode = parts.getOrNull(9) ?: return@mapNotNull null
+
+            if (state != "0A") return@mapNotNull null // LISTEN
+            val localPortHex = localAddress.substringAfterLast(':', "").uppercase()
+            if (localPortHex != targetPortHex) return@mapNotNull null
+            inode.takeIf { it.isNotBlank() && it.all(Char::isDigit) }
+        }
+        .toSet()
+}
+
+internal fun extractSocketInode(fdTarget: String): String? {
+    val match = Regex("""socket:\[(\d+)]""").matchEntire(fdTarget.trim()) ?: return null
+    return match.groupValues[1]
+}
 
 internal fun buildOpenClawPairingDenyScript(): String = """
 import fs from "node:fs";
@@ -209,6 +240,7 @@ class ProcessManager(
 ) {
     companion object {
         private const val TAG = "ProcessManager"
+        private const val GATEWAY_PORT = 18789
     }
 
     private val openClawPairingDenyScript: String by lazy { buildOpenClawPairingDenyScript() }
@@ -251,6 +283,7 @@ class ProcessManager(
         apiProvider: String = "",
         apiKey: String = "",
         selectedModel: String = "",
+        openAiCompatibleBaseUrl: String = "",
         channelConfig: ChannelConfig = ChannelConfig(),
         modelReasoning: Boolean = false,
         modelImages: Boolean = false,
@@ -271,6 +304,12 @@ class ProcessManager(
             errorMessage = null,
         )
         addLog("[andClaw] Starting gateway...")
+        if (apiProvider == "openai-compatible") {
+            addLog(
+                "[andClaw][Debug] OpenAI-compatible start params: " +
+                    "selectedModel='$selectedModel', baseUrl='$openAiCompatibleBaseUrl'"
+            )
+        }
 
         // 새 scope 생성
         scope?.cancel()
@@ -278,15 +317,28 @@ class ProcessManager(
         scope = newScope
 
         newScope.launch {
+            var launchedProcess: Process? = null
+            var localOutputJob: Job? = null
+            var localUptimeJob: Job? = null
             try {
-                // 이전 게이트웨이 프로세스 정리 (앱 재설치 등으로 좀비 프로세스 남아있을 수 있음)
-                killOrphanGatewayProcesses()
-
                 // 패치 파일이 없으면 생성
                 ensurePatchFile()
 
+                // 기존 게이트웨이 인스턴스 정리 (supervised + orphan 프로세스)
+                stopSupervisedGatewayIfRunning()
+                killOrphanGatewayProcesses()
+
                 // config 파일 생성/갱신 (모델, 게이트웨이, 브라우저 설정)
-                ensureOpenClawConfig(apiProvider, apiKey, selectedModel, modelReasoning, modelImages, modelContext, modelMaxOutput)
+                ensureOpenClawConfig(
+                    apiProvider = apiProvider,
+                    apiKey = apiKey,
+                    selectedModel = selectedModel,
+                    openAiCompatibleBaseUrl = openAiCompatibleBaseUrl,
+                    modelReasoning = modelReasoning,
+                    modelImages = modelImages,
+                    modelContext = modelContext,
+                    modelMaxOutput = modelMaxOutput,
+                )
 
                 // 채널 설정 기록
                 ensureChannelConfig(channelConfig)
@@ -308,6 +360,7 @@ class ProcessManager(
                             "anthropic" -> put("ANTHROPIC_API_KEY", apiKey)
                             "openai" -> put("OPENAI_API_KEY", apiKey)
                             "openai-codex" -> { /* OAuth provider: no API key env needed */ }
+                            "openai-compatible" -> put("OPENAI_COMPAT_API_KEY", apiKey)
                             "openrouter" -> put("OPENROUTER_API_KEY", apiKey)
                             "google" -> {
                                 put("GEMINI_API_KEY", apiKey)
@@ -338,36 +391,39 @@ class ProcessManager(
 
                 addLog("[andClaw] Command: ${cmd.joinToString(" ")}")
 
-                process = pb.start()
+                launchedProcess = pb.start()
+                process = launchedProcess
                 startTime = System.currentTimeMillis()
 
                 _gatewayState.value = _gatewayState.value.copy(
                     status = GatewayStatus.STARTING,
-                    pid = getProcessId(process),
+                    pid = getProcessId(launchedProcess),
                     dashboardReady = false,
                 )
                 addLog("[andClaw] Gateway process started (PID: ${_gatewayState.value.pid ?: "?"})")
 
                 // stdout/stderr 스트림 읽기
-                outputJob = newScope.launch {
-                    readProcessOutput(process!!)
+                localOutputJob = newScope.launch {
+                    readProcessOutput(launchedProcess)
                 }
+                outputJob = localOutputJob
 
                 // uptime 카운터
-                uptimeJob = newScope.launch {
+                localUptimeJob = newScope.launch {
                     while (isActive) {
                         delay(1000)
                         val uptime = (System.currentTimeMillis() - startTime) / 1000
                         _gatewayState.value = _gatewayState.value.copy(uptime = uptime)
                     }
                 }
+                uptimeJob = localUptimeJob
 
                 // 프로세스 종료 대기
                 val exitCode = withContext(Dispatchers.IO) {
-                    process!!.waitFor()
+                    launchedProcess.waitFor()
                 }
 
-                uptimeJob?.cancel()
+                localUptimeJob?.cancel()
                 addLog("[andClaw] Gateway process exited (exit code: $exitCode)")
 
                 // 예기치 않은 종료 (사용자가 stop()을 호출하지 않았는데 종료된 경우)
@@ -380,7 +436,20 @@ class ProcessManager(
                     )
                 }
             } catch (_: kotlinx.coroutines.CancellationException) {
-                // 정상적인 취소 (재시작 등) — 에러로 표시하지 않음
+                // 정상적인 취소 (재시작 등)
+                // 단, 취소 시 이미 띄운 프로세스가 살아있으면 명시적으로 정리해서 포트 점유를 방지한다.
+                localOutputJob?.cancel()
+                localUptimeJob?.cancel()
+                launchedProcess?.let { proc ->
+                    if (proc.isAlive) {
+                        addLog("[andClaw] Cancelling in-flight gateway start; killing spawned process")
+                        runCatching { proc.destroyForcibly() }
+                        runCatching { proc.waitFor(2, TimeUnit.SECONDS) }
+                    }
+                }
+                if (process === launchedProcess) {
+                    process = null
+                }
             } catch (e: Exception) {
                 addLog("[andClaw] Error: ${e.message}")
                 _gatewayState.value = _gatewayState.value.copy(
@@ -388,6 +457,16 @@ class ProcessManager(
                     errorMessage = e.message,
                     pid = null,
                 )
+            } finally {
+                if (outputJob === localOutputJob) {
+                    outputJob = null
+                }
+                if (uptimeJob === localUptimeJob) {
+                    uptimeJob = null
+                }
+                if (process === launchedProcess && launchedProcess?.isAlive != true) {
+                    process = null
+                }
             }
         }
     }
@@ -409,6 +488,9 @@ class ProcessManager(
         // 프로세스 트리 전체 종료
         process?.let { proc ->
             proc.destroyForcibly()
+            runCatching {
+                proc.waitFor(2, TimeUnit.SECONDS)
+            }
         }
         process = null
 
@@ -423,6 +505,7 @@ class ProcessManager(
         apiProvider: String = "",
         apiKey: String = "",
         selectedModel: String = "",
+        openAiCompatibleBaseUrl: String = "",
         channelConfig: ChannelConfig = ChannelConfig(),
         modelReasoning: Boolean = false,
         modelImages: Boolean = false,
@@ -431,7 +514,18 @@ class ProcessManager(
         braveSearchApiKey: String = "",
     ) {
         stop()
-        start(apiProvider, apiKey, selectedModel, channelConfig, modelReasoning, modelImages, modelContext, modelMaxOutput, braveSearchApiKey)
+        start(
+            apiProvider = apiProvider,
+            apiKey = apiKey,
+            selectedModel = selectedModel,
+            openAiCompatibleBaseUrl = openAiCompatibleBaseUrl,
+            channelConfig = channelConfig,
+            modelReasoning = modelReasoning,
+            modelImages = modelImages,
+            modelContext = modelContext,
+            modelMaxOutput = modelMaxOutput,
+            braveSearchApiKey = braveSearchApiKey,
+        )
     }
 
     /**
@@ -559,6 +653,7 @@ class ProcessManager(
         apiProvider: String,
         apiKey: String = "",
         selectedModel: String = "",
+        openAiCompatibleBaseUrl: String = "",
         modelReasoning: Boolean = false,
         modelImages: Boolean = false,
         modelContext: Int = 200000,
@@ -621,9 +716,14 @@ class ProcessManager(
                         val id = when {
                             selectedModel.startsWith("openai/") -> selectedModel.removePrefix("openai/")
                             selectedModel.startsWith("openai-codex/") -> selectedModel.removePrefix("openai-codex/")
+                            selectedModel.isNotBlank() -> selectedModel
                             else -> "gpt-5.3-codex"
                         }
                         "openai-codex/$id"
+                    }
+                    "openai-compatible" -> {
+                        val id = selectedModel.removePrefix("openai-compatible/")
+                        "openai-compatible/$id"
                     }
                     "google" -> {
                         val id = when {
@@ -641,9 +741,16 @@ class ProcessManager(
                     "anthropic" -> "anthropic/claude-sonnet-4-5"
                     "openai" -> "openai/gpt-5-mini"
                     "openai-codex" -> "openai-codex/gpt-5.3-codex"
+                    "openai-compatible" -> "openai-compatible/gpt-4o-mini"
                     "google" -> "google/gemini-2.5-flash"
                     else -> "openrouter/openrouter/free"
                 }
+            }
+            if (apiProvider == "openai-compatible") {
+                addLog(
+                    "[andClaw][Debug] OpenAI-compatible target model resolved: " +
+                        "selected='$selectedModel' -> primary='$targetModel'"
+                )
             }
 
             var changed = sanitizeKnownIncompatibleConfigKeys(json)
@@ -724,6 +831,27 @@ class ProcessManager(
                 }
                 // openclaw.json에서 models.providers 섹션 제거 (models.json으로 이관)
                 json.optJSONObject("models")?.remove("providers")
+                changed = true
+            } else if (apiProvider == "openai-compatible") {
+                val modelId = if (selectedModel.isNotBlank()) {
+                    selectedModel.removePrefix("openai-compatible/")
+                } else {
+                    "gpt-4o-mini"
+                }
+                val normalizedBaseUrl = normalizeOpenAiCompatibleBaseUrl(openAiCompatibleBaseUrl)
+                writeOpenAiCompatibleModelsJson(
+                    modelId = modelId,
+                    baseUrl = normalizedBaseUrl,
+                    modelReasoning = modelReasoning,
+                    modelImages = modelImages,
+                    modelContext = modelContext,
+                    modelMaxOutput = modelMaxOutput,
+                )
+                json.optJSONObject("models")?.remove("providers")
+                addLog(
+                    "[andClaw] OpenAI-compatible provider configured: " +
+                        "model='$modelId', baseUrl='$normalizedBaseUrl'"
+                )
                 changed = true
             }
 
@@ -889,30 +1017,139 @@ class ProcessManager(
      * 앱 재설치/강제종료 시 proot 프로세스가 남아 포트를 점유할 수 있다.
      */
     private fun killOrphanGatewayProcesses() {
+        var killedCount = 0
+
         try {
             val ps = ProcessBuilder("ps", "-ef").start()
             val lines = ps.inputStream.bufferedReader().readLines()
             ps.waitFor()
 
-            val myUid = android.os.Process.myUid()
             for (line in lines) {
                 if (line.contains("openclaw") || line.contains("libproot.so")) {
                     // PID 추출 (ps -ef 형식: UID PID PPID ...)
                     val parts = line.trim().split("\\s+".toRegex())
                     val pid = parts.getOrNull(1)?.toIntOrNull() ?: continue
+                    if (pid == android.os.Process.myPid()) continue
                     try {
                         android.os.Process.killProcess(pid)
                         addLog("[andClaw] Killing orphan process: PID $pid")
+                        killedCount++
                     } catch (_: Exception) {
                         // 권한 없는 프로세스는 무시
                     }
                 }
             }
-            // 포트 해제 대기
-            Thread.sleep(500)
         } catch (e: Exception) {
             addLog("[andClaw] Process cleanup error (ignored): ${e.message}")
         }
+
+        killedCount += killProcessesHoldingPort(GATEWAY_PORT)
+
+        if (killedCount > 0) {
+            // 포트 해제 대기
+            Thread.sleep(500)
+        }
+
+        if (!waitForPortRelease(GATEWAY_PORT, timeoutMs = 2_500L)) {
+            addLog("[andClaw] Warning: port $GATEWAY_PORT is still occupied after cleanup")
+        }
+    }
+
+    private fun stopSupervisedGatewayIfRunning() {
+        try {
+            val result = prootManager.executeWithResult(
+                command = "export NODE_OPTIONS='--require /root/.openclaw-patch.js' && openclaw gateway stop >/dev/null 2>&1 || true",
+                timeoutMs = 15_000L,
+            ) ?: return
+            if (!result.timedOut) {
+                addLog("[andClaw] Requested existing supervised gateway stop")
+            }
+        } catch (_: Exception) {
+            // 실패해도 fallback cleanup로 계속 진행
+        }
+    }
+
+    private fun killProcessesHoldingPort(port: Int): Int {
+        return try {
+            val myUid = android.os.Process.myUid()
+            val myPid = android.os.Process.myPid()
+            val socketInodes = findListeningSocketInodes(port)
+            if (socketInodes.isEmpty()) return 0
+
+            val targetPids = findPidsHoldingSocketInodes(socketInodes, myUid)
+                .filter { it != myPid }
+
+            var killed = 0
+            for (pid in targetPids) {
+                try {
+                    android.os.Process.killProcess(pid)
+                    addLog("[andClaw] Killed process holding port $port: PID $pid")
+                    killed++
+                } catch (_: Exception) {
+                    // 권한 없는 프로세스는 무시
+                }
+            }
+
+            killed
+        } catch (e: Exception) {
+            addLog("[andClaw] Port cleanup error (ignored): ${e.message}")
+            0
+        }
+    }
+
+    private fun findListeningSocketInodes(port: Int): Set<String> {
+        return buildSet {
+            listOf("/proc/net/tcp", "/proc/net/tcp6").forEach { path ->
+                val content = runCatching { File(path).readText() }.getOrNull() ?: return@forEach
+                addAll(parseListeningSocketInodes(content, port))
+            }
+        }
+    }
+
+    private fun findPidsHoldingSocketInodes(socketInodes: Set<String>, uid: Int): Set<Int> {
+        if (socketInodes.isEmpty()) return emptySet()
+
+        return buildSet {
+            val procDir = File("/proc")
+            val pidDirs = procDir.listFiles() ?: return@buildSet
+            for (pidDir in pidDirs) {
+                val pid = pidDir.name.toIntOrNull() ?: continue
+                if (!isSameUidProcess(pid, uid)) continue
+
+                val fdDir = File(pidDir, "fd")
+                val fdEntries = fdDir.listFiles() ?: continue
+                for (fdEntry in fdEntries) {
+                    val target = runCatching { android.system.Os.readlink(fdEntry.absolutePath) }.getOrNull() ?: continue
+                    val inode = extractSocketInode(target) ?: continue
+                    if (inode in socketInodes) {
+                        add(pid)
+                        break
+                    }
+                }
+            }
+        }
+    }
+
+    private fun isSameUidProcess(pid: Int, uid: Int): Boolean {
+        return runCatching {
+            val statusFile = File("/proc/$pid/status")
+            if (!statusFile.exists()) return false
+            val uidLine = statusFile.useLines { lines ->
+                lines.firstOrNull { it.startsWith("Uid:") }
+            } ?: return false
+            val processUid = uidLine.split("\\s+".toRegex()).getOrNull(1)?.toIntOrNull() ?: return false
+            processUid == uid
+        }.getOrDefault(false)
+    }
+
+    private fun waitForPortRelease(port: Int, timeoutMs: Long): Boolean {
+        val deadline = SystemClock.elapsedRealtime() + timeoutMs
+        while (SystemClock.elapsedRealtime() < deadline) {
+            if (findListeningSocketInodes(port).isEmpty()) return true
+            killProcessesHoldingPort(port)
+            Thread.sleep(200)
+        }
+        return findListeningSocketInodes(port).isEmpty()
     }
 
     /**
@@ -1026,6 +1263,57 @@ class ProcessManager(
         }
     }
 
+    private fun normalizeOpenAiCompatibleBaseUrl(raw: String): String {
+        val trimmed = raw.trim().trimEnd('/')
+        if (trimmed.isBlank()) return "https://api.openai.com/v1"
+        return trimmed
+    }
+
+    private fun writeOpenAiCompatibleModelsJson(
+        modelId: String,
+        baseUrl: String,
+        modelReasoning: Boolean,
+        modelImages: Boolean,
+        modelContext: Int,
+        modelMaxOutput: Int,
+    ) {
+        try {
+            val modelsJsonFile = File(prootManager.rootfsDir, "root/.openclaw/agents/main/agent/models.json")
+            modelsJsonFile.parentFile?.mkdirs()
+
+            val inputTypes = org.json.JSONArray().apply {
+                put("text")
+                if (modelImages) put("image")
+            }
+
+            val json = JSONObject().apply {
+                put("providers", JSONObject().apply {
+                    put("openai-compatible", JSONObject().apply {
+                        put("baseUrl", baseUrl)
+                        put("apiKey", "\${OPENAI_COMPAT_API_KEY}")
+                        put("models", org.json.JSONArray().apply {
+                            put(JSONObject().apply {
+                                put("id", modelId)
+                                put("name", modelId)
+                                put("api", "openai-completions")
+                                put("reasoning", modelReasoning)
+                                put("input", inputTypes)
+                                put("cost", JSONObject().apply {
+                                    put("input", 0); put("output", 0); put("cacheRead", 0); put("cacheWrite", 0)
+                                })
+                                put("contextWindow", modelContext)
+                                put("maxTokens", modelMaxOutput)
+                            })
+                        })
+                    })
+                })
+            }
+            modelsJsonFile.writeText(json.toString(2))
+        } catch (e: Exception) {
+            addLog("[andClaw] Failed to write openai-compatible models.json: ${e.message}")
+        }
+    }
+
     private fun ensurePatchFile() {
         val patchFile = File(prootManager.rootfsDir, "root/.openclaw-patch.js")
         if (!patchFile.exists()) {
@@ -1082,7 +1370,21 @@ class ProcessManager(
         val lineLower = line.lowercase()
 
         // 게이트웨이 ready 상태 감지 (HTTP 서버 리슨 시작)
-        if (lineLower.contains("listening on") && lineLower.contains("18789")) {
+        val isPortConflict = lineLower.contains("already listening on ws://127.0.0.1:18789") ||
+            lineLower.contains("port 18789 is already in use")
+        if (isPortConflict) {
+            _gatewayState.value = _gatewayState.value.copy(
+                status = GatewayStatus.ERROR,
+                errorMessage = "Port 18789 is already in use",
+            )
+            return
+        }
+
+        if (
+            lineLower.contains("listening on") &&
+            lineLower.contains("18789") &&
+            !lineLower.contains("already listening")
+        ) {
             _gatewayState.value = _gatewayState.value.copy(
                 status = GatewayStatus.RUNNING,
                 dashboardReady = true,
@@ -1291,6 +1593,7 @@ class ProcessManager(
         return buildMap {
             put("OPENROUTER_API_KEY", "__andclaw_env_placeholder__")
             put("OPENAI_API_KEY", "__andclaw_env_placeholder__")
+            put("OPENAI_COMPAT_API_KEY", "__andclaw_env_placeholder__")
             put("ANTHROPIC_API_KEY", "__andclaw_env_placeholder__")
             put("GOOGLE_API_KEY", "__andclaw_env_placeholder__")
             put("GEMINI_API_KEY", "__andclaw_env_placeholder__")
@@ -1303,6 +1606,7 @@ class ProcessManager(
                 when (lastApiProvider) {
                     "anthropic" -> put("ANTHROPIC_API_KEY", lastApiKey)
                     "openai" -> put("OPENAI_API_KEY", lastApiKey)
+                    "openai-compatible" -> put("OPENAI_COMPAT_API_KEY", lastApiKey)
                     "openrouter" -> put("OPENROUTER_API_KEY", lastApiKey)
                     "google" -> {
                         put("GOOGLE_API_KEY", lastApiKey)

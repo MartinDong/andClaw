@@ -79,6 +79,7 @@ import com.coderred.andclaw.R
 import com.coderred.andclaw.data.BugReportEmailIntentBuilder
 import com.coderred.andclaw.data.BugReportEmailMetadata
 import com.coderred.andclaw.data.BugReportEmailSummary
+import com.coderred.andclaw.ui.component.KeepScreenOnEffect
 import com.coderred.andclaw.ui.component.ModelSelectionDialog
 import com.coderred.andclaw.ui.component.WhatsAppQrDialog
 import com.coderred.andclaw.ui.screen.dashboard.WhatsAppQrState
@@ -95,6 +96,7 @@ fun SettingsScreen(
     val chargeOnlyMode by viewModel.chargeOnlyMode.collectAsState()
     val apiProvider by viewModel.apiProvider.collectAsState()
     val apiKey by viewModel.apiKey.collectAsState()
+    val openAiCompatibleBaseUrl by viewModel.openAiCompatibleBaseUrl.collectAsState()
     val selectedModel by viewModel.selectedModel.collectAsState()
     val availableModels by viewModel.availableModels.collectAsState()
     val isLoadingModels by viewModel.isLoadingModels.collectAsState()
@@ -117,6 +119,7 @@ fun SettingsScreen(
     val channelDisconnectError by viewModel.channelDisconnectError.collectAsState()
     val isCodexAuthInProgress by viewModel.isCodexAuthInProgress.collectAsState()
     val isCodexAuthenticated by viewModel.isCodexAuthenticated.collectAsState()
+    KeepScreenOnEffect(enabled = isRecoveryInstallRunning)
     val codexAuthUrl by viewModel.codexAuthUrl.collectAsState()
     val codexAuthDebugLine by viewModel.codexAuthDebugLine.collectAsState()
     val bugReportUiState by viewModel.bugReportUiState.collectAsState()
@@ -125,6 +128,7 @@ fun SettingsScreen(
     val openAiProviderLabel = stringResource(R.string.onboarding_provider_openai)
     val selectedModelDisplay = when {
         selectedModel.isBlank() -> stringResource(R.string.settings_model_default)
+        apiProvider == "openai-compatible" -> selectedModel
         selectedModel.startsWith("openrouter/") -> selectedModel.removePrefix("openrouter/")
         selectedModel.startsWith("anthropic/") -> selectedModel.removePrefix("anthropic/")
         selectedModel.startsWith("openai-codex/") -> selectedModel.removePrefix("openai-codex/")
@@ -308,6 +312,7 @@ fun SettingsScreen(
                             "openrouter" -> stringResource(R.string.onboarding_provider_openrouter)
                             "anthropic" -> stringResource(R.string.onboarding_provider_anthropic)
                             "openai", "openai-codex" -> stringResource(R.string.onboarding_provider_openai)
+                            "openai-compatible" -> stringResource(R.string.onboarding_provider_openai_compatible)
                             "google" -> stringResource(R.string.onboarding_provider_google)
                             else -> apiProvider.replaceFirstChar { it.uppercase() }
                         },
@@ -319,15 +324,17 @@ fun SettingsScreen(
                         color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
                     )
 
-                    // Model
-                    SettingClickableRow(
-                        title = stringResource(R.string.settings_select_model),
-                        value = selectedModelDisplay,
-                        onClick = {
-                            showModelDialog = true
-                            viewModel.fetchModelsForCurrentProvider()
-                        },
-                    )
+                    if (apiProvider != "openai-compatible") {
+                        // Model
+                        SettingClickableRow(
+                            title = stringResource(R.string.settings_select_model),
+                            value = selectedModelDisplay,
+                            onClick = {
+                                showModelDialog = true
+                                viewModel.fetchModelsForCurrentProvider()
+                            },
+                        )
+                    }
 
                     if (isOpenAiProviderFamily) {
                         HorizontalDivider(
@@ -649,10 +656,11 @@ fun SettingsScreen(
             isLoading = isLoadingModels,
             errorMessage = modelLoadError,
             onSelectModel = { model ->
-                viewModel.setSelectedModel(model)
-                showModelDialog = false
-                viewModel.shouldShowRestartPromptForProvider(apiProvider) { shouldShow ->
-                    showRestartHint = shouldShow
+                viewModel.setSelectedModel(model) {
+                    showModelDialog = false
+                    viewModel.shouldShowRestartPromptForProvider(apiProvider) { shouldShow ->
+                        showRestartHint = shouldShow
+                    }
                 }
             },
             onDismiss = { showModelDialog = false },
@@ -695,8 +703,23 @@ fun SettingsScreen(
         ApiKeyInputDialog(
             currentKey = apiKey,
             provider = apiProvider,
+            currentBaseUrl = openAiCompatibleBaseUrl,
+            currentModelId = if (apiProvider == "openai-compatible") {
+                selectedModel.removePrefix("openai-compatible/")
+            } else {
+                selectedModel
+            },
             onSave = { key ->
                 viewModel.setApiKey(key)
+                showApiKeyDialog = false
+                showRestartHint = true
+            },
+            onSaveOpenAiCompatible = { key, baseUrl, modelId ->
+                viewModel.saveOpenAiCompatibleConfig(
+                    apiKey = key,
+                    baseUrl = baseUrl,
+                    modelId = modelId,
+                )
                 showApiKeyDialog = false
                 showRestartHint = true
             },
@@ -1289,6 +1312,7 @@ private fun ProviderSelectionDialog(
         "openrouter" to stringResource(R.string.onboarding_provider_openrouter),
         "anthropic" to stringResource(R.string.onboarding_provider_anthropic),
         "openai" to stringResource(R.string.onboarding_provider_openai),
+        "openai-compatible" to stringResource(R.string.onboarding_provider_openai_compatible),
         "google" to stringResource(R.string.onboarding_provider_google),
     )
 
@@ -1392,12 +1416,18 @@ private fun GptSubscriptionDialog(
 private fun ApiKeyInputDialog(
     currentKey: String,
     provider: String,
+    currentBaseUrl: String,
+    currentModelId: String,
     onSave: (String) -> Unit,
+    onSaveOpenAiCompatible: (String, String, String) -> Unit,
     onDismiss: () -> Unit,
 ) {
     var keyText by remember { mutableStateOf(currentKey) }
+    var baseUrlText by remember { mutableStateOf(currentBaseUrl) }
+    var modelIdText by remember { mutableStateOf(currentModelId) }
     var passwordVisible by remember { mutableStateOf(false) }
     val context = LocalContext.current
+    val isOpenAiCompatible = provider == "openai-compatible"
 
     val settingsUrl = when (provider) {
         "openrouter" -> "https://openrouter.ai/keys"
@@ -1434,6 +1464,22 @@ private fun ApiKeyInputDialog(
                         }
                     },
                 )
+                if (isOpenAiCompatible) {
+                    OutlinedTextField(
+                        value = baseUrlText,
+                        onValueChange = { baseUrlText = it },
+                        label = { Text(stringResource(R.string.settings_openai_compatible_base_url)) },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    OutlinedTextField(
+                        value = modelIdText,
+                        onValueChange = { modelIdText = it },
+                        label = { Text(stringResource(R.string.settings_openai_compatible_model_id)) },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
                 if (settingsUrl != null) {
                     Text(
                         text = stringResource(R.string.settings_api_key_get_link, provider.replaceFirstChar { it.uppercase() }),
@@ -1448,8 +1494,22 @@ private fun ApiKeyInputDialog(
         },
         confirmButton = {
             TextButton(
-                onClick = { onSave(keyText.trim()) },
-                enabled = keyText.isNotBlank(),
+                onClick = {
+                    if (isOpenAiCompatible) {
+                        onSaveOpenAiCompatible(
+                            keyText.trim(),
+                            baseUrlText.trim(),
+                            modelIdText.trim(),
+                        )
+                    } else {
+                        onSave(keyText.trim())
+                    }
+                },
+                enabled = if (isOpenAiCompatible) {
+                    keyText.isNotBlank() && baseUrlText.isNotBlank() && modelIdText.isNotBlank()
+                } else {
+                    keyText.isNotBlank()
+                },
             ) {
                 Text(stringResource(R.string.settings_api_key_save))
             }

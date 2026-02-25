@@ -230,6 +230,11 @@
     <string name="settings_recovery_install_confirm_message">⚠️ रिकवरी पुनर्स्थापना ऐप का पूरा मुख्य वातावरण फिर से इंस्टॉल करेगी।\n\nआपका उपयोगकर्ता डेटा (चैट/सेशन) नहीं मिटेगा, लेकिन रिकवरी में कई मिनट लग सकते हैं।\n\nरिकवरी चल रही हो तब तक ऐप बंद न करें और फोर्स-स्टॉप भी न करें।</string>
     <string name="settings_api_key_get_link">%1$s API कुंजी प्राप्त करें →</string>
     <string name="bug_report_included_gateway_logs">- गेटवे UI लॉग (सैनिटाइज़्ड): %1$d पंक्तियाँ</string>
+    <string name="onboarding_provider_openai_compatible">OpenAI-संगत (कस्टम एंडपॉइंट)</string>
+
+    <string name="onboarding_provider_nvidia">NVIDIA</string>
+    <string name="settings_openai_compatible_base_url">बेस URL (OpenAI-संगत)</string>
+    <string name="settings_openai_compatible_model_id">मॉडल ID</string>
 </resources>
 
 

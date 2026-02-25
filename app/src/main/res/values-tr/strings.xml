@@ -230,6 +230,11 @@
     <string name="settings_recovery_install_confirm_message">⚠️ Kurtarma yeniden kurulumu, uygulamanın tüm temel ortamını yeniden yükler.\n\nKullanıcı verileriniz (sohbetler/oturumlar) silinmez, ancak kurtarma birkaç dakika sürebilir.\n\nKurtarma sürerken uygulamayı kapatmayın veya zorla durdurmayın.</string>
     <string name="settings_api_key_get_link">%1$s API anahtarı al →</string>
     <string name="bug_report_included_gateway_logs">- Gateway UI günlükleri (temizlendi): %1$d satır</string>
+    <string name="onboarding_provider_openai_compatible">OpenAI uyumlu (Özel uç nokta)</string>
+
+    <string name="onboarding_provider_nvidia">NVIDIA</string>
+    <string name="settings_openai_compatible_base_url">Temel URL (OpenAI uyumlu)</string>
+    <string name="settings_openai_compatible_model_id">Model kimliği</string>
 </resources>
 
 

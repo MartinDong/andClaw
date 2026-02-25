@@ -5,8 +5,11 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
+import android.os.BatteryManager
 import android.os.Build
 import android.os.IBinder
 import android.os.PowerManager
@@ -63,6 +66,11 @@ class GatewayService : Service() {
 
         private var _instance: GatewayService? = null
 
+        internal fun shouldHoldChargingWakeLock(batteryStatus: Int): Boolean {
+            return batteryStatus == BatteryManager.BATTERY_STATUS_CHARGING ||
+                batteryStatus == BatteryManager.BATTERY_STATUS_FULL
+        }
+
         /** 현재 서비스의 ProcessManager. 서비스가 살아있을 때만 non-null. */
         val processManager: ProcessManager?
             get() = _instance?.pm
@@ -109,6 +117,15 @@ class GatewayService : Service() {
     private val desiredRunningMutex = Mutex()
     private val wakeLockGuard = Any()
     private var activeWakeLock: PowerManager.WakeLock? = null
+    private val chargingWakeLockGuard = Any()
+    private var chargingWakeLock: PowerManager.WakeLock? = null
+    private var isBatteryReceiverRegistered = false
+    private val batteryStateReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            val status = intent?.getIntExtra(BatteryManager.EXTRA_STATUS, -1) ?: -1
+            updateChargingWakeLock(shouldHoldChargingWakeLock(status))
+        }
+    }
 
     override fun onCreate() {
         super.onCreate()
@@ -121,6 +138,7 @@ class GatewayService : Service() {
         createNotificationChannel()
         createPairingNotificationChannel()
         startForeground(NOTIFICATION_ID, createNotification(getString(R.string.notification_waiting)))
+        startChargingWakeLockController()
 
         // 상태 변화 → 알림 업데이트
         serviceScope.launch {
@@ -203,6 +221,7 @@ class GatewayService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onDestroy() {
+        stopChargingWakeLockController()
         releaseActiveWakeLock()
         pm.stop()
         serviceScope.cancel()
@@ -320,10 +339,14 @@ class GatewayService : Service() {
         }
 
         if (!isActionCurrent(actionToken)) return
+        val app = application as AndClawApp
+        val bundleUpdateRequired = runCatching { app.setupManager.isBundleUpdateRequired() }
+            .getOrDefault(true)
 
         val startWakeLockTimeoutMs = resolveStartWakeLockTimeoutMs(
             fromWatchdog = fromWatchdog,
             userInitiated = userInitiated,
+            bundleUpdateRequired = bundleUpdateRequired,
         )
 
         // 사용자가 START를 요청한 순간부터 desired-running 상태를 유지한다.
@@ -342,16 +365,25 @@ class GatewayService : Service() {
         withTimedWakeLock(startWakeLockTimeoutMs) {
             if (!isActionCurrent(actionToken)) return@withTimedWakeLock
 
-            val app = application as AndClawApp
             try {
                 val result = app.setupManager.updateBundleIfNeededWithPolicy()
                 if (result.outcome == BundleUpdateOutcome.FAILED) {
                     android.util.Log.e("GatewayService", "Bundle update policy run failed: ${result.errorMessage}")
+                    if (isActionCurrent(actionToken)) {
+                        // 번들 업데이트 실패 시 부분 설치 상태로 런타임을 시작하면 ENOENT로 연쇄 실패할 수 있다.
+                        // 사용자 의도는 유지하고 watchdog 복구를 위해 desired-running 상태만 유지한다.
+                        markDesiredRunningAndScheduleWatchdog(actionToken)
+                    }
+                    return@withTimedWakeLock
                 }
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Exception) {
                 android.util.Log.e("GatewayService", "Bundle update failed during ACTION_START", error)
+                if (isActionCurrent(actionToken)) {
+                    markDesiredRunningAndScheduleWatchdog(actionToken)
+                }
+                return@withTimedWakeLock
             }
 
             if (!isActionCurrent(actionToken)) return@withTimedWakeLock
@@ -364,6 +396,7 @@ class GatewayService : Service() {
             val modelImages = prefs.selectedModelImages.first()
             val modelContext = prefs.selectedModelContext.first()
             val modelMaxOutput = prefs.selectedModelMaxOutput.first()
+            val openAiCompatibleBaseUrl = prefs.openAiCompatibleBaseUrl.first()
             val braveSearchApiKey = prefs.braveSearchApiKey.first()
 
             if (!setDesiredRunningAndWatchdog(shouldRun = true, actionToken = actionToken)) {
@@ -375,6 +408,7 @@ class GatewayService : Service() {
                 apiProvider,
                 apiKey,
                 selectedModel,
+                openAiCompatibleBaseUrl,
                 channelConfig,
                 modelReasoning,
                 modelImages,
@@ -418,6 +452,7 @@ class GatewayService : Service() {
             val modelImages = prefs.selectedModelImages.first()
             val modelContext = prefs.selectedModelContext.first()
             val modelMaxOutput = prefs.selectedModelMaxOutput.first()
+            val openAiCompatibleBaseUrl = prefs.openAiCompatibleBaseUrl.first()
             val braveSearchApiKey = prefs.braveSearchApiKey.first()
 
             if (!isActionCurrent(actionToken)) return@withTimedWakeLock
@@ -425,6 +460,7 @@ class GatewayService : Service() {
                 apiProvider,
                 apiKey,
                 selectedModel,
+                openAiCompatibleBaseUrl,
                 channelConfig,
                 modelReasoning,
                 modelImages,
@@ -598,8 +634,12 @@ class GatewayService : Service() {
 
     private fun isActionCurrent(actionToken: Long): Boolean = actionSequence.get() == actionToken
 
-    private fun resolveStartWakeLockTimeoutMs(fromWatchdog: Boolean, userInitiated: Boolean): Long {
-        if (fromWatchdog || !userInitiated) return START_WAKE_LOCK_TIMEOUT_BACKGROUND_MS
+    private fun resolveStartWakeLockTimeoutMs(
+        fromWatchdog: Boolean,
+        userInitiated: Boolean,
+        bundleUpdateRequired: Boolean,
+    ): Long {
+        if (fromWatchdog || !userInitiated || bundleUpdateRequired) return START_WAKE_LOCK_TIMEOUT_BACKGROUND_MS
         val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
         return if (powerManager.isInteractive) {
             START_WAKE_LOCK_TIMEOUT_MS
@@ -641,6 +681,70 @@ class GatewayService : Service() {
         }
         if (wakeLock?.isHeld == true) {
             wakeLock.release()
+        }
+    }
+
+    private fun startChargingWakeLockController() {
+        if (isBatteryReceiverRegistered) return
+        val filter = IntentFilter(Intent.ACTION_BATTERY_CHANGED)
+        val stickyIntent = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(batteryStateReceiver, filter, Context.RECEIVER_EXPORTED)
+        } else {
+            @Suppress("DEPRECATION")
+            registerReceiver(batteryStateReceiver, filter)
+        }
+        isBatteryReceiverRegistered = true
+        val status = stickyIntent?.getIntExtra(BatteryManager.EXTRA_STATUS, -1) ?: -1
+        updateChargingWakeLock(shouldHoldChargingWakeLock(status))
+    }
+
+    private fun stopChargingWakeLockController() {
+        if (isBatteryReceiverRegistered) {
+            try {
+                unregisterReceiver(batteryStateReceiver)
+            } catch (_: IllegalArgumentException) {
+                // ignore
+            } finally {
+                isBatteryReceiverRegistered = false
+            }
+        }
+        releaseChargingWakeLock()
+    }
+
+    private fun updateChargingWakeLock(shouldHold: Boolean) {
+        if (shouldHold) {
+            acquireChargingWakeLock()
+        } else {
+            releaseChargingWakeLock()
+        }
+    }
+
+    private fun acquireChargingWakeLock() {
+        synchronized(chargingWakeLockGuard) {
+            if (chargingWakeLock?.isHeld == true) return
+            val lock = chargingWakeLock ?: run {
+                val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
+                @Suppress("deprecation")
+                powerManager.newWakeLock(
+                    PowerManager.PARTIAL_WAKE_LOCK,
+                    "andClaw::ChargingWakeLock",
+                ).apply { setReferenceCounted(false) }
+            }
+            if (!lock.isHeld) {
+                lock.acquire()
+            }
+            chargingWakeLock = lock
+        }
+    }
+
+    private fun releaseChargingWakeLock() {
+        val lock = synchronized(chargingWakeLockGuard) {
+            val current = chargingWakeLock
+            chargingWakeLock = null
+            current
+        }
+        if (lock?.isHeld == true) {
+            lock.release()
         }
     }
 }

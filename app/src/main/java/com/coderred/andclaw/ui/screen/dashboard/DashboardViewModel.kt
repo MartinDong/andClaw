@@ -167,9 +167,11 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
         viewModelScope.launch(Dispatchers.IO) {
             app.preferencesManager.setSelectedModel(model)
             val provider = app.preferencesManager.apiProvider.first()
+            val openAiCompatBaseUrl = app.preferencesManager.openAiCompatibleBaseUrl.first()
             app.processManager.ensureOpenClawConfig(
                 apiProvider = provider,
                 selectedModel = model.id,
+                openAiCompatibleBaseUrl = openAiCompatBaseUrl,
                 modelReasoning = model.supportsReasoning,
                 modelImages = model.supportsImages,
                 modelContext = model.contextLength,

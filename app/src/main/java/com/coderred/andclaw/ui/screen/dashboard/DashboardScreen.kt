@@ -98,6 +98,7 @@ import com.coderred.andclaw.R
 import com.coderred.andclaw.data.GatewayStatus
 import com.coderred.andclaw.data.PairingRequest
 import com.coderred.andclaw.proot.BundleUpdateFailureState
+import com.coderred.andclaw.ui.component.KeepScreenOnEffect
 import com.coderred.andclaw.ui.component.ModelSelectionDialog
 import com.coderred.andclaw.ui.component.SessionLogsDialog
 import com.coderred.andclaw.ui.theme.StatusError
@@ -133,6 +134,7 @@ fun DashboardScreen(
     val bundleActionInProgress by viewModel.bundleActionInProgress.collectAsState()
     val bundleActionMessage by viewModel.bundleActionMessage.collectAsState()
     val context = LocalContext.current
+    KeepScreenOnEffect(enabled = bundleActionInProgress)
 
     var showModelDialog by remember { mutableStateOf(false) }
     var showApiKeyWarning by remember { mutableStateOf(false) }

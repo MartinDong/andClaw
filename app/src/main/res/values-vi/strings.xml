@@ -230,6 +230,11 @@
     <string name="settings_recovery_install_confirm_message">⚠️ Cài đặt khôi phục sẽ cài đặt lại toàn bộ môi trường chạy cốt lõi của ứng dụng.\n\nDữ liệu người dùng của bạn (chat/phiên) sẽ không bị xóa, nhưng quá trình khôi phục có thể mất vài phút.\n\nTrong khi khôi phục đang chạy, đừng đóng hoặc buộc dừng ứng dụng.</string>
     <string name="settings_api_key_get_link">Lấy khóa API %1$s →</string>
     <string name="bug_report_included_gateway_logs">- Nhật ký UI gateway (đã làm sạch): %1$d dòng</string>
+    <string name="onboarding_provider_openai_compatible">Tương thích OpenAI (Điểm cuối tùy chỉnh)</string>
+
+    <string name="onboarding_provider_nvidia">NVIDIA</string>
+    <string name="settings_openai_compatible_base_url">URL cơ sở (tương thích OpenAI)</string>
+    <string name="settings_openai_compatible_model_id">ID mô hình</string>
 </resources>
 
 

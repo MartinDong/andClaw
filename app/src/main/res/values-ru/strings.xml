@@ -230,6 +230,11 @@
     <string name="settings_recovery_install_confirm_message">⚠️ Восстановительная переустановка заново установит всю основную среду приложения.\n\nВаши пользовательские данные (чаты/сессии) не будут удалены, но восстановление может занять несколько минут.\n\nНе закрывайте приложение и не выполняйте принудительную остановку, пока идет восстановление.</string>
     <string name="settings_api_key_get_link">Получить API-ключ %1$s →</string>
     <string name="bug_report_included_gateway_logs">- Логи UI шлюза (очищенные): %1$d строк</string>
+    <string name="onboarding_provider_openai_compatible">Совместимый с OpenAI (Пользовательская конечная точка)</string>
+
+    <string name="onboarding_provider_nvidia">NVIDIA</string>
+    <string name="settings_openai_compatible_base_url">Базовый URL (совместимо с OpenAI)</string>
+    <string name="settings_openai_compatible_model_id">ID модели</string>
 </resources>
 
 

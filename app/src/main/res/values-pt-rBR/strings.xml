@@ -230,6 +230,11 @@
     <string name="settings_recovery_install_confirm_message">⚠️ A reinstalação de recuperação reinstalará todo o ambiente principal do app.\n\nSeus dados de usuário (chats/sessões) não serão apagados, mas a recuperação pode levar vários minutos.\n\nNão feche nem force a parada do app enquanto a recuperação estiver em andamento.</string>
     <string name="settings_api_key_get_link">Obter chave de API do %1$s →</string>
     <string name="bug_report_included_gateway_logs">- Logs da UI do gateway (sanitizados): %1$d linhas</string>
+    <string name="onboarding_provider_openai_compatible">Compatível com OpenAI (Endpoint personalizado)</string>
+
+    <string name="onboarding_provider_nvidia">NVIDIA</string>
+    <string name="settings_openai_compatible_base_url">URL base (compatível com OpenAI)</string>
+    <string name="settings_openai_compatible_model_id">ID do modelo</string>
 </resources>
 
 

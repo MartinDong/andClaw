@@ -236,6 +236,11 @@
     <string name="settings_recovery_install_confirm_message">⚠️ Die Wiederherstellungsinstallation installiert die gesamte Kernumgebung der App neu.\n\nIhre Benutzerdaten (Chats/Sitzungen) werden nicht gelöscht, aber die Wiederherstellung kann mehrere Minuten dauern.\n\nSchließen Sie die App nicht und erzwingen Sie keinen Stopp, solange die Wiederherstellung läuft.</string>
     <string name="settings_api_key_get_link">%1$s API-Schlüssel erhalten →</string>
     <string name="bug_report_included_gateway_logs">- Gateway-UI-Protokolle (bereinigt): %1$d Zeilen</string>
+    <string name="onboarding_provider_openai_compatible">OpenAI-kompatibel (Benutzerdefinierter Endpunkt)</string>
+
+    <string name="onboarding_provider_nvidia">NVIDIA</string>
+    <string name="settings_openai_compatible_base_url">Basis-URL (OpenAI-kompatibel)</string>
+    <string name="settings_openai_compatible_model_id">Modell-ID</string>
 </resources>
 
 
