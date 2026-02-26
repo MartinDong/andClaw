@@ -3,6 +3,8 @@
 andClaw는 안드로이드 폰을 온디바이스 AI 게이트웨이 호스트로 바꿔주는 앱이다.
 `proot` 기반 Ubuntu arm64 환경에서 OpenClaw를 실행하고, Compose UI로 설치/온보딩/실행 제어를 제공한다.
 
+Google Play: https://play.google.com/store/apps/details?id=com.coderred.andclaw
+
 ## 주요 기능
 
 - rootfs, Node.js, 시스템 도구, OpenClaw, Playwright Chromium 원클릭 설치

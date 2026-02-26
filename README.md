@@ -3,6 +3,8 @@
 andClaw turns an Android phone into an on-device AI gateway host.
 It runs OpenClaw inside a `proot` Ubuntu arm64 environment and provides a Compose-based mobile UI for setup, onboarding, and runtime control.
 
+Google Play: https://play.google.com/store/apps/details?id=com.coderred.andclaw
+
 ## Features
 
 - One-tap setup flow for rootfs, Node.js, tools, OpenClaw, and Playwright Chromium
