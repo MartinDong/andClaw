@@ -49,6 +49,9 @@ class PreferencesManager(private val context: Context) {
         private val KEY_DISCORD_GUILD_ALLOWLIST = stringPreferencesKey("discord_guild_allowlist")
         private val KEY_DISCORD_REQUIRE_MENTION = booleanPreferencesKey("discord_require_mention")
         private val KEY_BRAVE_SEARCH_API_KEY = stringPreferencesKey("brave_search_api_key")
+        private val KEY_MEMORY_SEARCH_ENABLED = booleanPreferencesKey("memory_search_enabled")
+        private val KEY_MEMORY_SEARCH_PROVIDER = stringPreferencesKey("memory_search_provider")
+        private val KEY_MEMORY_SEARCH_API_KEY = stringPreferencesKey("memory_search_api_key")
         private val KEY_GATEWAY_WAS_RUNNING = booleanPreferencesKey("gateway_was_running")
         private val KEY_BUNDLE_UPDATE_FAIL_COUNT_BY_VERSION = stringPreferencesKey("bundle_update_fail_count_by_version")
         private val KEY_BUNDLE_UPDATE_LAST_FAIL_AT = longPreferencesKey("bundle_update_last_fail_at")
@@ -231,6 +234,43 @@ class PreferencesManager(private val context: Context) {
 
     suspend fun setBraveSearchApiKey(key: String) {
         context.dataStore.edit { it[KEY_BRAVE_SEARCH_API_KEY] = key }
+    }
+
+    // ── Memory Search ──
+
+    val memorySearchEnabled: Flow<Boolean> = context.dataStore.data.map { prefs ->
+        prefs[KEY_MEMORY_SEARCH_ENABLED] ?: true
+    }
+
+    val hasExplicitMemorySearchPrefs: Flow<Boolean> = context.dataStore.data.map { prefs ->
+        prefs.contains(KEY_MEMORY_SEARCH_ENABLED) ||
+            prefs.contains(KEY_MEMORY_SEARCH_PROVIDER) ||
+            prefs.contains(KEY_MEMORY_SEARCH_API_KEY)
+    }
+
+    val memorySearchProvider: Flow<String> = context.dataStore.data.map { prefs ->
+        val raw = prefs[KEY_MEMORY_SEARCH_PROVIDER].orEmpty().trim().lowercase()
+        when (raw) {
+            "", "auto", "openai", "gemini", "voyage", "mistral", "local" -> if (raw.isBlank()) "auto" else raw
+            else -> "auto"
+        }
+    }
+
+    val memorySearchApiKey: Flow<String> = context.dataStore.data.map { prefs ->
+        prefs[KEY_MEMORY_SEARCH_API_KEY] ?: ""
+    }
+
+    suspend fun setMemorySearchEnabled(enabled: Boolean) {
+        context.dataStore.edit { it[KEY_MEMORY_SEARCH_ENABLED] = enabled }
+    }
+
+    suspend fun setMemorySearchProvider(provider: String) {
+        val normalized = provider.trim().lowercase().ifBlank { "auto" }
+        context.dataStore.edit { it[KEY_MEMORY_SEARCH_PROVIDER] = normalized }
+    }
+
+    suspend fun setMemorySearchApiKey(key: String) {
+        context.dataStore.edit { it[KEY_MEMORY_SEARCH_API_KEY] = key }
     }
 
     // ── Channel settings ──

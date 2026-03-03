@@ -143,6 +143,19 @@
     <string name="settings_brave_search_desc">AI 에이전트의 웹 검색을 활성화합니다. 선택 사항 — 비워두면 비활성화됩니다.</string>
     <string name="settings_brave_search_optional">미설정 (선택 사항)</string>
     <string name="settings_brave_search_get_key">Brave Search API 키 발급 →</string>
+    <string name="settings_memory_search_title">메모리 검색</string>
+    <string name="settings_memory_search_desc">MEMORY.md 및 memory 파일에 대한 시맨틱 메모리 검색을 사용합니다.</string>
+    <string name="settings_memory_search_provider">메모리 프로바이더</string>
+    <string name="settings_memory_search_provider_dialog_title">메모리 검색 프로바이더</string>
+    <string name="settings_memory_search_provider_auto">자동(권장)</string>
+    <string name="settings_memory_search_provider_openai">OpenAI</string>
+    <string name="settings_memory_search_provider_gemini">Gemini</string>
+    <string name="settings_memory_search_provider_voyage">Voyage</string>
+    <string name="settings_memory_search_provider_mistral">Mistral</string>
+    <string name="settings_memory_search_provider_local">로컬</string>
+    <string name="settings_memory_search_api_key">메모리 검색 API 키</string>
+    <string name="settings_memory_search_api_key_desc">메모리 임베딩용 선택 키. 비워두면 프로바이더 기본 인증 정보를 사용합니다.</string>
+    <string name="settings_memory_search_api_key_optional">미설정(선택)</string>
     <string name="settings_openclaw_doctor_fix">OpenClaw Doctor (Fix)</string>
     <string name="settings_openclaw_doctor_fix_run">`openclaw doctor --fix` 실행</string>
     <string name="settings_openclaw_doctor_fix_running">실행 중…</string>
@@ -179,6 +192,7 @@
     <string name="whatsapp_connected">연결됨!</string>
     <string name="whatsapp_connect_error">연결 실패: %1$s</string>
     <string name="whatsapp_qr_share">공유</string>
+    <string name="whatsapp_qr_scan_done">스캔 완료</string>
 
     <!-- Pairing Notification -->
     <string name="pairing_notification_channel">페어링 요청</string>

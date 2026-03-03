@@ -7,6 +7,7 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.PowerManager
+import android.os.SystemClock
 import android.provider.Settings
 import android.util.Base64
 import android.util.Log
@@ -26,10 +27,12 @@ import com.coderred.andclaw.data.GatewayStatus
 import com.coderred.andclaw.data.isSessionError
 import com.coderred.andclaw.proot.BundleUpdateOutcome
 import com.coderred.andclaw.proot.GatewayWsClient
+import com.coderred.andclaw.proot.WhatsAppLoginCoordinator
 import com.coderred.andclaw.service.GatewayService
 import com.coderred.andclaw.ui.screen.dashboard.WhatsAppQrState
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -37,8 +40,10 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import org.json.JSONObject
 import java.io.BufferedReader
 import java.io.File
@@ -94,6 +99,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
 
     companion object {
         private const val TAG = "AndClawCodexAuth"
+        private const val WHATSAPP_LOG_TAG = "AndClawWhatsAppLogin"
         private const val OAUTH_CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann"
         private const val OAUTH_AUTHORIZE_URL = "https://auth.openai.com/oauth/authorize"
         private const val OAUTH_TOKEN_URL_PRIMARY = "https://auth.openai.com/oauth/token"
@@ -102,6 +108,16 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         private const val OAUTH_JWT_CLAIM_PATH = "https://api.openai.com/auth"
         private const val LOG_UNLOCK_TAP_COUNT = 7
         private const val LOG_UNLOCK_TAP_WINDOW_MS = 2000L
+        private const val WHATSAPP_QR_EXPIRES_MS = 120_000L
+        private const val WHATSAPP_LOGIN_GUARD_TIMEOUT_MS = 4L * 60L * 1000L
+        private const val WHATSAPP_LOGIN_GUARD_REFRESH_INTERVAL_MS = 60_000L
+        private const val WHATSAPP_STABLE_CONNECTED_REQUIRED_COUNT = 4
+        private const val WHATSAPP_WAIT_TIMEOUT_MS = 120_000L
+        private const val WHATSAPP_WAIT_MAX_ATTEMPTS = 2
+        private const val WHATSAPP_QR_START_TIMEOUT_MS = 70_000L
+        private const val WHATSAPP_QR_FORCE_TIMEOUT_MS = 70_000L
+        private const val WHATSAPP_GATEWAY_RESTART_READY_TIMEOUT_MS = 20_000L
+        private const val WHATSAPP_GATEWAY_RESTART_RETRY_INTERVAL_MS = 250L
         private const val OPENCLAW_BUILTIN_MODELS_PATH =
             "usr/local/lib/node_modules/openclaw/node_modules/@mariozechner/pi-ai/dist/models.generated.js"
     }
@@ -135,6 +151,12 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         .stateIn(viewModelScope, SharingStarted.Eagerly, "")
 
     val braveSearchApiKey: StateFlow<String> = prefs.braveSearchApiKey
+        .stateIn(viewModelScope, SharingStarted.Eagerly, "")
+    val memorySearchEnabled: StateFlow<Boolean> = prefs.memorySearchEnabled
+        .stateIn(viewModelScope, SharingStarted.Eagerly, true)
+    val memorySearchProvider: StateFlow<String> = prefs.memorySearchProvider
+        .stateIn(viewModelScope, SharingStarted.Eagerly, "auto")
+    val memorySearchApiKey: StateFlow<String> = prefs.memorySearchApiKey
         .stateIn(viewModelScope, SharingStarted.Eagerly, "")
 
     val isLogSectionUnlocked: StateFlow<Boolean> = prefs.logSectionUnlocked
@@ -218,7 +240,12 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
 
     private var wsClient: GatewayWsClient? = null
     private var whatsappQrJob: Job? = null
-    private var shouldRestartAfterWhatsAppPairing: Boolean = false
+    private var whatsappLinkRefreshJob: Job? = null
+    private var whatsappLoginGuardKeepAliveJob: Job? = null
+    private val whatsappLoginGuardLock = Any()
+    private var isWhatsAppLoginCoordinatorOwner: Boolean = false
+    private var isWhatsAppLoginGuardActive: Boolean = false
+    private var wasGatewayActiveAtWhatsAppLoginStart: Boolean = false
     private var logUnlockTapCount: Int = 0
     private var lastLogUnlockTapAtMs: Long = 0L
 
@@ -417,6 +444,27 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
+    fun setMemorySearchEnabled(enabled: Boolean) {
+        viewModelScope.launch(Dispatchers.IO) {
+            prefs.setMemorySearchEnabled(enabled)
+            applyMemorySearchConfigAndRestart(forceRestart = true)
+        }
+    }
+
+    fun setMemorySearchProvider(provider: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            prefs.setMemorySearchProvider(provider)
+            applyMemorySearchConfigAndRestart(forceRestart = true)
+        }
+    }
+
+    fun setMemorySearchApiKey(key: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            prefs.setMemorySearchApiKey(key)
+            applyMemorySearchConfigAndRestart(forceRestart = false)
+        }
+    }
+
     fun runOpenClawDoctorFix() {
         if (_isDoctorFixRunning.value || _isRecoveryInstallRunning.value || _isOpenClawUpdateRunning.value) return
         _isDoctorFixRunning.value = true
@@ -425,6 +473,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
                 val provider = prefs.apiProvider.first()
                 val apiKey = prefs.apiKey.first()
                 val braveApiKey = prefs.braveSearchApiKey.first()
+                val memorySearchApiKey = prefs.memorySearchApiKey.first()
                 val channelConfig = prefs.channelConfig.first()
 
                 val doctorEnv = buildMap {
@@ -438,6 +487,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
                     put("GEMINI_API_KEY", "__andclaw_env_placeholder__")
                     put("BRAVE_API_KEY", resolved(braveApiKey))
                     put("BRAVE_SEARCH_API_KEY", resolved(braveApiKey))
+                    put("MEMORY_SEARCH_API_KEY", resolved(memorySearchApiKey))
                     put("TELEGRAM_BOT_TOKEN", resolved(channelConfig.telegramBotToken))
                     put("DISCORD_BOT_TOKEN", resolved(channelConfig.discordBotToken))
 
@@ -797,6 +847,44 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         restartGatewayIfRunning()
     }
 
+    private fun supportsMemorySearchOverride(provider: String): Boolean {
+        return when (provider.trim().lowercase()) {
+            "auto", "openai", "gemini", "voyage", "mistral" -> true
+            else -> false
+        }
+    }
+
+    private suspend fun applyMemorySearchConfigAndRestart(forceRestart: Boolean) {
+        val provider = prefs.apiProvider.first()
+        val selectedModel = prefs.selectedModel.first()
+        val openAiCompatibleBaseUrl = prefs.openAiCompatibleBaseUrl.first()
+        val modelReasoning = prefs.selectedModelReasoning.first()
+        val modelImages = prefs.selectedModelImages.first()
+        val modelContext = prefs.selectedModelContext.first()
+        val modelMaxOutput = prefs.selectedModelMaxOutput.first()
+        val memoryEnabled = prefs.memorySearchEnabled.first()
+        val memoryProvider = prefs.memorySearchProvider.first()
+        val memoryApiKey = prefs.memorySearchApiKey.first()
+
+        processManager.ensureOpenClawConfig(
+            apiProvider = provider,
+            selectedModel = selectedModel,
+            openAiCompatibleBaseUrl = openAiCompatibleBaseUrl,
+            modelReasoning = modelReasoning,
+            modelImages = modelImages,
+            modelContext = modelContext,
+            modelMaxOutput = modelMaxOutput,
+            memorySearchEnabled = memoryEnabled,
+            memorySearchProvider = memoryProvider,
+            memorySearchApiKey = memoryApiKey,
+        )
+        val shouldRestartForMemoryRuntime =
+            memoryEnabled && supportsMemorySearchOverride(memoryProvider)
+        if (forceRestart || shouldRestartForMemoryRuntime) {
+            restartGatewayIfRunning()
+        }
+    }
+
     private fun restartGatewayIfRunning(delayMs: Long = 1000L) {
         val status = processManager.gatewayState.value.status
         if (
@@ -809,6 +897,14 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
             kotlinx.coroutines.delay(delayMs)
             val context = getApplication<Application>()
             GatewayService.restart(context, userInitiated = false)
+        }
+    }
+
+    private suspend fun restartGatewayForWhatsAppRecovery() {
+        withContext(Dispatchers.Main) {
+            val context = getApplication<Application>()
+            // 515 복구는 강제로 재시작을 시도해야 하므로 userInitiated=true로 우회한다.
+            GatewayService.restart(context, userInitiated = true)
         }
     }
 
@@ -1684,8 +1780,116 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
             }
     }
 
-    private fun refreshWhatsAppLinkStateInternal() {
-        _isWhatsAppLinked.value = runCatching { hasWhatsAppCredsFile() }.getOrDefault(false)
+    /**
+     * 설정 화면의 "연결됨" 뱃지에 반영할 실제 링크 상태를 갱신한다.
+     *
+     * 중요:
+     * - creds 파일 존재 여부가 아니라 gateway가 계산한 snapshot.connected를 기준으로 삼는다.
+     * - 그래서 "파일은 남아있는데 실제 미연결"인 케이스를 줄일 수 있다.
+     */
+    private suspend fun refreshWhatsAppLinkStateInternal() {
+        val snapshot = runCatching {
+            val client = GatewayWsClient(prootManager)
+            try {
+                client.getWhatsAppChannelSnapshot(probe = false)
+            } finally {
+                client.close()
+            }
+        }.getOrNull()
+        val linkedByCreds = runCatching { hasWhatsAppCredsFile() }.getOrDefault(false)
+        val linkedSnapshot = when {
+            snapshot?.connected == true -> true
+            snapshot?.linked != null -> snapshot.linked == true
+            snapshot?.connected != null -> snapshot.connected == true
+            else -> null
+        }
+        _isWhatsAppLinked.value = linkedSnapshot ?: linkedByCreds
+    }
+
+    /**
+     * 재시작 직후/경계 상태에서 즉시 실패 판정하지 않기 위한 grace polling.
+     *
+     * 설계 의도:
+     * 1) 짧은 간격으로 상태를 재확인해서 일시적인 false/null을 흡수
+     * 2) requiredConnectedCount를 통해 "연속 connected"가 잡힐 때만 성공 처리
+     * 3) 각 probe 호출은 withTimeoutOrNull로 상한을 둬서 루프가 과도하게 블로킹되지 않게 함
+     */
+    private suspend fun awaitWhatsAppConnectedWithGrace(
+        client: GatewayWsClient,
+        timeoutMs: Long = 18_000L,
+        intervalMs: Long = 1_500L,
+        requiredConnectedCount: Int = WHATSAPP_STABLE_CONNECTED_REQUIRED_COUNT,
+        probe: Boolean = true,
+        maxProbeTimeoutMs: Long = 4_000L,
+    ): Boolean {
+        val deadline = System.currentTimeMillis() + timeoutMs
+        var consecutiveConnected = 0
+        while (System.currentTimeMillis() < deadline) {
+            val remainingMs = deadline - System.currentTimeMillis()
+            if (remainingMs <= 0L) break
+            // 전체 grace window를 넘지 않도록 남은 시간과 per-probe 상한 중 작은 값 사용
+            val probeTimeoutMs = minOf(remainingMs, maxProbeTimeoutMs)
+            val connected = withTimeoutOrNull(probeTimeoutMs) {
+                withContext(Dispatchers.IO) {
+                    client.isWhatsAppChannelConnected(
+                        probe = probe,
+                        statusTimeoutMs = probeTimeoutMs,
+                    )
+                }
+            }
+            if (connected == true) {
+                consecutiveConnected += 1
+                // 연속 성공 횟수 충족 시에만 true
+                if (consecutiveConnected >= requiredConnectedCount) return true
+            } else {
+                // 중간에 false/null이면 streak 리셋
+                consecutiveConnected = 0
+            }
+            delay(intervalMs)
+        }
+        return false
+    }
+
+    /**
+     * restart 호출 후 gateway 상태머신이 실제로 다시 올라왔는지 대기한다.
+     *
+     * 기본 규칙:
+     * - requireTransition=false: RUNNING이면 즉시 ready
+     * - requireTransition=true: STARTING/STOPPED/ERROR 등 전이 신호를 한 번 본 뒤 RUNNING일 때 ready
+     *
+     * fallback:
+     * - 일부 디바이스/타이밍에서는 전이 이벤트를 못 보고 RUNNING만 보일 수 있어,
+     *   requireTransition=true여도 3초 이상 RUNNING 지속 시 fallback ready 허용
+     */
+    private suspend fun waitForGatewayRestartReady(
+        timeoutMs: Long = WHATSAPP_GATEWAY_RESTART_READY_TIMEOUT_MS,
+        intervalMs: Long = WHATSAPP_GATEWAY_RESTART_RETRY_INTERVAL_MS,
+        requireTransition: Boolean = false,
+    ): Boolean {
+        val startedAt = System.currentTimeMillis()
+        val deadline = System.currentTimeMillis() + timeoutMs
+        var sawRestartTransition = !requireTransition
+        while (System.currentTimeMillis() < deadline) {
+            when (processManager.gatewayState.value.status) {
+                GatewayStatus.RUNNING -> {
+                    if (sawRestartTransition) return true
+                    val elapsedMs = System.currentTimeMillis() - startedAt
+                    if (requireTransition && elapsedMs >= 3_000L) {
+                        Log.i(
+                            WHATSAPP_LOG_TAG,
+                            "restart ready fallback: still RUNNING after ${elapsedMs}ms without observed transition; proceeding.",
+                        )
+                        return true
+                    }
+                }
+                GatewayStatus.STARTING -> sawRestartTransition = true
+                GatewayStatus.STOPPED, GatewayStatus.STOPPING, GatewayStatus.ERROR -> {
+                    sawRestartTransition = true
+                }
+            }
+            delay(intervalMs)
+        }
+        return false
     }
 
     private fun clearWhatsAppCredsOffline(): Boolean {
@@ -1696,8 +1900,21 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     }
 
     fun refreshWhatsAppLinkState() {
-        viewModelScope.launch(Dispatchers.IO) {
-            refreshWhatsAppLinkStateInternal()
+        if (whatsappLinkRefreshJob?.isActive == true) return
+        if (whatsappQrJob?.isActive == true) return
+        when (_whatsappQrState.value) {
+            is WhatsAppQrState.Loading,
+            is WhatsAppQrState.Waiting,
+            is WhatsAppQrState.QrReady,
+            -> return
+            else -> Unit
+        }
+        whatsappLinkRefreshJob = viewModelScope.launch(Dispatchers.IO) {
+            try {
+                refreshWhatsAppLinkStateInternal()
+            } finally {
+                whatsappLinkRefreshJob = null
+            }
         }
     }
 
@@ -1720,9 +1937,14 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
                                 val status = processManager.gatewayState.value.status
                                 val gatewayActive =
                                     status == GatewayStatus.RUNNING || status == GatewayStatus.STARTING
-                                if (!gatewayActive) {
-                                    success = withContext(Dispatchers.IO) { clearWhatsAppCredsOffline() }
+                                val cleared = withContext(Dispatchers.IO) { clearWhatsAppCredsOffline() }
+                                if (cleared) {
+                                    Log.i(
+                                        WHATSAPP_LOG_TAG,
+                                        "logoutChannel failed; cleared WhatsApp creds as fallback (gatewayActive=$gatewayActive)",
+                                    )
                                 }
+                                success = cleared
                             }
 
                             if (!success) {
@@ -1778,74 +2000,521 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     }
 
     fun startWhatsAppQr() {
+        // 이미 로그인 잡이 돌고 있으면 중복 진입 방지
+        if (whatsappQrJob?.isActive == true) return
+        val qrClickStartedAt = SystemClock.elapsedRealtime()
+        Log.i(WHATSAPP_LOG_TAG, "QR connect tapped; starting login flow")
+        // 일반 상태 polling과 로그인 흐름이 겹치면 상태 오판정/락 대기가 생기므로 중지
+        whatsappLinkRefreshJob?.cancel()
+        whatsappLinkRefreshJob = null
+        // Settings / Dashboard 동시 로그인 시도 방지(전역 가드)
+        if (!WhatsAppLoginCoordinator.tryAcquire()) {
+            _whatsappQrState.value = WhatsAppQrState.Error(
+                "WhatsApp login is already running in another screen. Please wait."
+            )
+            return
+        }
+        isWhatsAppLoginCoordinatorOwner = true
         whatsappQrJob?.cancel()
-        shouldRestartAfterWhatsAppPairing = false
         _whatsappQrState.value = WhatsAppQrState.Loading
         whatsappQrJob = viewModelScope.launch {
+            val appContext = getApplication<Application>().applicationContext
+            var keepSessionOpen = false
             try {
                 val client = GatewayWsClient(prootManager)
                 wsClient = client
+                var qrAttempt = 0
 
-                val qrData = withContext(Dispatchers.IO) { client.startWhatsAppLogin() }
+                // 1) stale creds 정리
+                // - gateway가 꺼져 있을 때만 기본 purge 시도
+                // - gateway가 켜져 있으면 건너뛰고 이후 단계에서 필요 시 강제 purge
+                val gatewayActive =
+                    processManager.gatewayState.value.status == GatewayStatus.RUNNING ||
+                        processManager.gatewayState.value.status == GatewayStatus.STARTING
+                // 복구 단계에서 "원래 꺼져있던 gateway를 강제로 켜는" 부작용을 막기 위해
+                // 로그인 시작 시점의 활성 상태를 저장한다.
+                wasGatewayActiveAtWhatsAppLoginStart = gatewayActive
+                if (!gatewayActive) {
+                    val purgeStartedAt = SystemClock.elapsedRealtime()
+                    val purgedStaleCreds = withContext(Dispatchers.IO) {
+                        client.purgeStaleWhatsAppCredsIfNeeded()
+                    }
+                    Log.i(
+                        WHATSAPP_LOG_TAG,
+                        "stale creds purge elapsed=${SystemClock.elapsedRealtime() - purgeStartedAt}ms purged=$purgedStaleCreds",
+                    )
+                } else {
+                    Log.i(
+                        WHATSAPP_LOG_TAG,
+                        "stale creds purge skipped (gateway active)",
+                    )
+                }
+
+                // 2) 로그인 가드(FGS) 시작
+                // - 로그인 도중 프로세스가 쉽게 죽지 않도록 guard 유지
+                startWhatsAppLoginGuardKeepAlive(appContext)
+
+                // 3) flapping/충돌 상태 격리 시도 (짧은 상한)
+                val isolationStartedAt = SystemClock.elapsedRealtime()
+                val isolated = withTimeoutOrNull(1_500L) {
+                    withContext(Dispatchers.IO) {
+                        client.ensureWhatsAppLoginIsolation()
+                    }
+                } ?: false
+                Log.i(
+                    WHATSAPP_LOG_TAG,
+                    "login isolation elapsed=${SystemClock.elapsedRealtime() - isolationStartedAt}ms isolated=$isolated",
+                )
+                if (isolated) {
+                    delay(500)
+                }
+
+                // 4) 기본 QR 발급 시도
+                Log.i(WHATSAPP_LOG_TAG, "web.login.start request begin")
+                val loginStartCallAt = SystemClock.elapsedRealtime()
+                var qrData = withContext(Dispatchers.IO) {
+                    client.startWhatsAppLogin(timeoutMs = WHATSAPP_QR_START_TIMEOUT_MS)
+                }
+                Log.i(
+                    WHATSAPP_LOG_TAG,
+                    "web.login.start request end elapsed=${SystemClock.elapsedRealtime() - loginStartCallAt}ms success=${qrData != null}",
+                )
                 if (qrData == null) {
                     val reason = client.getLastCallErrorMessage()
-                    if (client.isLastCallWhatsAppAlreadyLinked()) {
-                        shouldRestartAfterWhatsAppPairing = true
-                        _whatsappQrState.value = WhatsAppQrState.Connected
-                        delay(1500)
-                        _whatsappQrState.value = WhatsAppQrState.Idle
-                        restartGatewayIfRunning()
-                        shouldRestartAfterWhatsAppPairing = false
-                        withContext(Dispatchers.IO) {
-                            refreshWhatsAppLinkStateInternal()
+                    val qrTimeoutLikely = reason?.contains(
+                        "timed out waiting for whatsapp qr",
+                        ignoreCase = true,
+                    ) == true
+                    if (qrTimeoutLikely) {
+                        // 4-a) QR timeout이면 강제 정리 + relink 경로로 복구 시도
+                        Log.i(
+                            WHATSAPP_LOG_TAG,
+                            "start login returned QR timeout; forcing stale creds purge + relink flow.",
+                        )
+                        val purged = withContext(Dispatchers.IO) {
+                            client.purgeStaleWhatsAppCredsIfNeeded(force = true)
                         }
-                        client.close()
-                        wsClient = null
-                        return@launch
+                        if (purged) {
+                            val status = processManager.gatewayState.value.status
+                            val activeNow =
+                                status == GatewayStatus.RUNNING || status == GatewayStatus.STARTING
+                            if (activeNow) {
+                                // gateway가 이미 떠 있으면 강제 restart로 세션 꼬임 해소
+                                restartGatewayForWhatsAppRecovery()
+                                val restartReady = waitForGatewayRestartReady(
+                                    timeoutMs = 30_000L,
+                                    intervalMs = 500L,
+                                    requireTransition = true,
+                                )
+                                if (!restartReady) {
+                                    _whatsappQrState.value = WhatsAppQrState.Error(
+                                        "Gateway restart timed out while forcing relink. Please try again."
+                                    )
+                                    return@launch
+                                }
+                            }
+                        }
+                        Log.i(WHATSAPP_LOG_TAG, "web.login.start(force=true) request begin [qr-timeout recovery]")
+                        val forceCallAt = SystemClock.elapsedRealtime()
+                        qrData = withContext(Dispatchers.IO) {
+                            client.startWhatsAppLogin(force = true, timeoutMs = WHATSAPP_QR_FORCE_TIMEOUT_MS)
+                        }
+                        Log.i(
+                            WHATSAPP_LOG_TAG,
+                            "web.login.start(force=true) request end elapsed=${SystemClock.elapsedRealtime() - forceCallAt}ms success=${qrData != null}",
+                        )
                     }
+                }
+                if (qrData == null) {
+                    if (client.isLastCallWhatsAppAlreadyLinked()) {
+                        // 5) "already linked" 응답: 즉시 force relink 1차 시도
+                        Log.i(WHATSAPP_LOG_TAG, "web.login.start returned already linked; forcing relink QR.")
+                        Log.i(WHATSAPP_LOG_TAG, "web.login.start(force=true) request begin")
+                        val forceCallAt = SystemClock.elapsedRealtime()
+                        qrData = withContext(Dispatchers.IO) {
+                            client.startWhatsAppLogin(force = true, timeoutMs = WHATSAPP_QR_FORCE_TIMEOUT_MS)
+                        }
+                        Log.i(
+                            WHATSAPP_LOG_TAG,
+                            "web.login.start(force=true) request end elapsed=${SystemClock.elapsedRealtime() - forceCallAt}ms success=${qrData != null}",
+                        )
+                        if (qrData == null) {
+                            val forceReason = client.getLastCallErrorMessage().orEmpty()
+                            val forceQrTimeoutLikely = forceReason.contains(
+                                "timed out waiting for whatsapp qr",
+                                ignoreCase = true,
+                            )
+                            if (forceQrTimeoutLikely) {
+                                // 5-a) force relink도 QR timeout이면 purge + restart 후 force 재시도
+                                Log.i(
+                                    WHATSAPP_LOG_TAG,
+                                    "force relink timed out for QR; purging creds + gateway restart + force retry.",
+                                )
+                                val purgedLinkedCreds = withContext(Dispatchers.IO) {
+                                    client.purgeStaleWhatsAppCredsIfNeeded(force = true)
+                                }
+                                if (purgedLinkedCreds) {
+                                    val status = processManager.gatewayState.value.status
+                                    val activeNow =
+                                        status == GatewayStatus.RUNNING || status == GatewayStatus.STARTING
+                                    if (activeNow) {
+                                        restartGatewayForWhatsAppRecovery()
+                                        val restartReady = waitForGatewayRestartReady(
+                                            timeoutMs = 30_000L,
+                                            intervalMs = 500L,
+                                            requireTransition = true,
+                                        )
+                                        if (!restartReady) {
+                                            _whatsappQrState.value = WhatsAppQrState.Error(
+                                                "Gateway restart timed out while forcing relink. Please try again."
+                                            )
+                                            return@launch
+                                        }
+                                    }
+                                }
+                                Log.i(WHATSAPP_LOG_TAG, "web.login.start(force=true) request begin [after purge+restart]")
+                                val forceRetryAt = SystemClock.elapsedRealtime()
+                                qrData = withContext(Dispatchers.IO) {
+                                    client.startWhatsAppLogin(force = true, timeoutMs = WHATSAPP_QR_FORCE_TIMEOUT_MS)
+                                }
+                                Log.i(
+                                    WHATSAPP_LOG_TAG,
+                                    "web.login.start(force=true) request end elapsed=${SystemClock.elapsedRealtime() - forceRetryAt}ms success=${qrData != null} [after purge+restart]",
+                                )
+                            }
+                        }
+                        if (qrData == null) {
+                            // 5-b) relink QR은 못 받았지만 이미 connected 상태일 수 있으니 마지막 확인
+                            val connected = withContext(Dispatchers.IO) {
+                                client.isWhatsAppChannelConnected(probe = false) == true
+                            }
+                            if (connected) {
+                                _whatsappQrState.value = WhatsAppQrState.Connected
+                                delay(1500)
+                                _whatsappQrState.value = WhatsAppQrState.Idle
+                                withContext(Dispatchers.IO) {
+                                    refreshWhatsAppLinkStateInternal()
+                                }
+                                return@launch
+                            }
+                        }
+                    }
+                }
+                if (qrData == null) {
+                    val reason = client.getLastCallErrorMessage()
                     val message = if (reason.isNullOrBlank()) {
                         "Failed to get QR code"
                     } else {
                         "Failed to get QR code: $reason"
                     }
                     _whatsappQrState.value = WhatsAppQrState.Error(message)
-                    client.close()
-                    wsClient = null
                     return@launch
                 }
 
                 val isDataUrl = qrData.startsWith("data:image/")
-                _whatsappQrState.value = WhatsAppQrState.QrReady(qrData, isDataUrl)
-
-                val success = withContext(Dispatchers.IO) { client.waitWhatsAppLogin() }
-                if (success) {
-                    shouldRestartAfterWhatsAppPairing = true
-                    _whatsappQrState.value = WhatsAppQrState.Connected
-                    delay(3000)
-                    _whatsappQrState.value = WhatsAppQrState.Idle
-                    // 페어링 완료 후 채널 설정 반영
-                    restartGatewayIfRunning()
-                    shouldRestartAfterWhatsAppPairing = false
-                    withContext(Dispatchers.IO) {
-                        refreshWhatsAppLinkStateInternal()
-                    }
-                } else {
-                    val reason = client.getLastCallErrorMessage()
-                    val message = if (reason.isNullOrBlank()) {
-                        "Login timed out"
-                    } else {
-                        "Login failed: $reason"
-                    }
-                    _whatsappQrState.value = WhatsAppQrState.Error(message)
-                }
-
-                client.close()
-                wsClient = null
+                qrAttempt += 1
+                val issuedAtMs = System.currentTimeMillis()
+                // 6) QR 표시 후, SettingsScreen의 LaunchedEffect가 자동으로 confirmWhatsAppQrScanned() 호출
+                _whatsappQrState.value = WhatsAppQrState.QrReady(
+                    qrData = qrData,
+                    isDataUrl = isDataUrl,
+                    attempt = qrAttempt,
+                    issuedAtMs = issuedAtMs,
+                    expiresAtMs = issuedAtMs + WHATSAPP_QR_EXPIRES_MS,
+                )
+                Log.i(
+                    WHATSAPP_LOG_TAG,
+                    "QR ready; total elapsed since tap=${SystemClock.elapsedRealtime() - qrClickStartedAt}ms",
+                )
+                keepSessionOpen = true
             } catch (e: Exception) {
                 if (e is kotlinx.coroutines.CancellationException) throw e
                 _whatsappQrState.value = WhatsAppQrState.Error(e.message ?: "Unknown error")
-                wsClient?.close()
-                wsClient = null
+            } finally {
+                whatsappQrJob = null
+                if (!keepSessionOpen) {
+                    finishWhatsAppLoginSession()
+                }
+            }
+        }
+    }
+
+    /**
+     * QR 표시 후 실제 login.wait / 515 복구 / 최종 판정을 수행한다.
+     *
+     * 현재 판정 흐름:
+     * - wait 최대 N회
+     * - 515/restart-required 감지 시 즉시 restart 복구 분기
+     * - restart 이후 즉시 확인 + grace polling + final probe + final snapshot 순서로 확인
+     * - 그래도 실패면 Error로 종료
+     */
+    fun confirmWhatsAppQrScanned() {
+        if (whatsappQrJob?.isActive == true) return
+        if (_whatsappQrState.value !is WhatsAppQrState.QrReady) return
+
+        val client = wsClient
+        if (client == null) {
+            finishWhatsAppLoginSession()
+            _whatsappQrState.value = WhatsAppQrState.Error("Login session expired. Please generate a new QR code.")
+            return
+        }
+
+        whatsappQrJob = viewModelScope.launch {
+            try {
+                var success = false
+                var lastWaitReason: String? = null
+                var restartImmediately = false
+                // 1) web.login.wait 단계
+                for (attempt in 0 until WHATSAPP_WAIT_MAX_ATTEMPTS) {
+                    val waitStartedAt = SystemClock.elapsedRealtime()
+                    val waitResult = withContext(Dispatchers.IO) {
+                        client.waitWhatsAppLogin(timeoutMs = WHATSAPP_WAIT_TIMEOUT_MS)
+                    }
+                    val waitElapsedMs = SystemClock.elapsedRealtime() - waitStartedAt
+                    val waitMessage = client.getLastCallGatewayMessage()
+                    if (!waitMessage.isNullOrBlank()) {
+                        Log.i(
+                            WHATSAPP_LOG_TAG,
+                            "web.login.wait attempt=${attempt + 1} elapsed=${waitElapsedMs}ms connected=$waitResult message=$waitMessage",
+                        )
+                    }
+                    if (waitResult) {
+                        // web.login.wait=true는 이미 로그인 완료 신호로 간주한다.
+                        // channels.status 반영이 몇 초 늦을 수 있으므로 strict gate로 쓰지 않는다.
+                        success = true
+                        val connectedHint = withTimeoutOrNull(5_000L) {
+                            withContext(Dispatchers.IO) {
+                                client.isWhatsAppChannelConnected(
+                                    probe = false,
+                                    statusTimeoutMs = 5_000L,
+                                ) == true
+                            }
+                        }
+                        if (connectedHint != true) {
+                            Log.i(
+                                WHATSAPP_LOG_TAG,
+                                "web.login.wait attempt=${attempt + 1} succeeded; accepting success without strict status gate.",
+                            )
+                        }
+                        break
+                    }
+                    lastWaitReason = client.getLastCallErrorMessage()
+                    Log.i(
+                        WHATSAPP_LOG_TAG,
+                        "web.login.wait attempt=${attempt + 1} failed elapsed=${waitElapsedMs}ms reason=${lastWaitReason ?: "unknown"}",
+                    )
+                    if (client.isLastCallWhatsAppRestartRequired()) {
+                        // 515 계열은 추가 wait 반복보다 restart 복구가 우선
+                        restartImmediately = true
+                        Log.i(
+                            WHATSAPP_LOG_TAG,
+                            "515 detected on wait attempt=${attempt + 1}; restart immediately.",
+                        )
+                        break
+                    }
+                }
+                if (success) {
+                    _whatsappQrState.value = WhatsAppQrState.Connected
+                    delay(1500)
+                    _whatsappQrState.value = WhatsAppQrState.Idle
+                } else {
+                    // 2) restart 복구 단계
+                    _whatsappQrState.value = WhatsAppQrState.Waiting
+                    Log.i(
+                        WHATSAPP_LOG_TAG,
+                        if (restartImmediately) {
+                            "restart required detected; restarting gateway for recovery."
+                        } else {
+                            "wait failed ${WHATSAPP_WAIT_MAX_ATTEMPTS} times; restarting gateway for recovery."
+                        },
+                    )
+                    var restartAttempted = false
+                    var restartReady = false
+                    if (wasGatewayActiveAtWhatsAppLoginStart) {
+                        restartAttempted = true
+                        restartGatewayForWhatsAppRecovery()
+                        restartReady = waitForGatewayRestartReady(
+                            timeoutMs = 30_000L,
+                            intervalMs = 500L,
+                            requireTransition = true,
+                        )
+                    } else {
+                        Log.i(
+                            WHATSAPP_LOG_TAG,
+                            "skip restart recovery: gateway was not active at login start.",
+                        )
+                    }
+                    if (restartReady) {
+                        val connectedImmediatelyAfterRestart = withContext(Dispatchers.IO) {
+                            client.isWhatsAppChannelConnected(probe = false) == true
+                        }
+                        if (connectedImmediatelyAfterRestart) {
+                            Log.i(
+                                WHATSAPP_LOG_TAG,
+                                "Linked immediately after gateway restart.",
+                            )
+                            _whatsappQrState.value = WhatsAppQrState.Connected
+                            delay(1500)
+                            _whatsappQrState.value = WhatsAppQrState.Idle
+                            return@launch
+                        }
+
+                        // restart 직후 즉시 true를 못 잡더라도 일정 시간 grace polling
+                        val recoveredAfterRestart = awaitWhatsAppConnectedWithGrace(
+                            client = client,
+                            timeoutMs = 25_000L,
+                            intervalMs = 1_000L,
+                            requiredConnectedCount = 1,
+                            probe = false,
+                            maxProbeTimeoutMs = 20_000L,
+                        )
+                        if (recoveredAfterRestart) {
+                            Log.i(
+                                WHATSAPP_LOG_TAG,
+                                "Linked after gateway restart recovery.",
+                            )
+                            _whatsappQrState.value = WhatsAppQrState.Connected
+                            delay(1500)
+                            _whatsappQrState.value = WhatsAppQrState.Idle
+                            return@launch
+                        }
+                    }
+
+                    // 3) restart ready timeout이어도 false negative 방지를 위해 final probe를 더 길게 수행
+                    val finalProbeTimeoutMs = if (restartAttempted && restartReady) 20_000L else 45_000L
+                    val finalProbePerCallTimeoutMs = if (restartAttempted && restartReady) 20_000L else 35_000L
+                    val recoveredByFinalProbe = awaitWhatsAppConnectedWithGrace(
+                        client = client,
+                        timeoutMs = finalProbeTimeoutMs,
+                        intervalMs = 1_000L,
+                        requiredConnectedCount = 1,
+                        probe = false,
+                        maxProbeTimeoutMs = finalProbePerCallTimeoutMs,
+                    )
+                    if (recoveredByFinalProbe) {
+                        Log.i(
+                            WHATSAPP_LOG_TAG,
+                            "Linked after final probe verification post-restart.",
+                        )
+                        _whatsappQrState.value = WhatsAppQrState.Connected
+                        delay(1500)
+                        _whatsappQrState.value = WhatsAppQrState.Idle
+                        return@launch
+                    }
+
+                    // 4) 마지막 단발 snapshot 확인(최종 false negative 방지)
+                    val finalSnapshotConnected = withTimeoutOrNull(finalProbePerCallTimeoutMs) {
+                        withContext(Dispatchers.IO) {
+                            client.isWhatsAppChannelConnected(
+                                probe = false,
+                                statusTimeoutMs = finalProbePerCallTimeoutMs,
+                            ) == true
+                        }
+                    } == true
+                    if (finalSnapshotConnected) {
+                        Log.i(
+                            WHATSAPP_LOG_TAG,
+                            "Linked on final snapshot check after recovery path.",
+                        )
+                        _whatsappQrState.value = WhatsAppQrState.Connected
+                        delay(1500)
+                        _whatsappQrState.value = WhatsAppQrState.Idle
+                        return@launch
+                    }
+
+                    val reason = client.getLastCallErrorMessage() ?: lastWaitReason
+                    val message = if (restartAttempted && !restartReady) {
+                        "Gateway restart timed out. Please try again."
+                    } else if (reason.isNullOrBlank()) {
+                        if (restartAttempted) {
+                            "Login failed after gateway restart."
+                        } else {
+                            "Login failed. Please try again."
+                        }
+                    } else {
+                        if (restartAttempted) {
+                            "Login failed after gateway restart: $reason"
+                        } else {
+                            "Login failed: $reason"
+                        }
+                    }
+                    _whatsappQrState.value = WhatsAppQrState.Error(message)
+                }
+            } catch (e: Exception) {
+                if (e is kotlinx.coroutines.CancellationException) throw e
+                _whatsappQrState.value = WhatsAppQrState.Error(e.message ?: "Unknown error")
+            } finally {
+                whatsappQrJob = null
+                // 재시도 차단(코디네이터/가드 락)을 최소화하기 위해 세션 정리를 먼저 수행한다.
+                finishWhatsAppLoginSession()
+                withContext(NonCancellable + Dispatchers.IO) {
+                    val refreshed = withTimeoutOrNull(4_000L) {
+                        refreshWhatsAppLinkStateInternal()
+                        true
+                    } ?: false
+                    if (!refreshed) {
+                        Log.i(
+                            WHATSAPP_LOG_TAG,
+                            "post-login link-state refresh timed out; session already released.",
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * WhatsApp 로그인 세션 정리 공통 함수.
+     * - WS client close
+     * - login guard(FGS) 중지
+     * - 전역 coordinator release
+     */
+    private fun finishWhatsAppLoginSession() {
+        wsClient?.close()
+        wsClient = null
+        whatsappLoginGuardKeepAliveJob?.cancel()
+        whatsappLoginGuardKeepAliveJob = null
+        synchronized(whatsappLoginGuardLock) {
+            if (isWhatsAppLoginCoordinatorOwner && isWhatsAppLoginGuardActive) {
+                GatewayService.stopWhatsAppLoginGuard()
+            }
+            isWhatsAppLoginGuardActive = false
+        }
+        wasGatewayActiveAtWhatsAppLoginStart = false
+        if (isWhatsAppLoginCoordinatorOwner) {
+            WhatsAppLoginCoordinator.release()
+        }
+        isWhatsAppLoginCoordinatorOwner = false
+    }
+
+    private fun startWhatsAppLoginGuardKeepAlive(appContext: Context) {
+        synchronized(whatsappLoginGuardLock) {
+            GatewayService.startWhatsAppLoginGuard(
+                context = appContext,
+                timeoutMs = WHATSAPP_LOGIN_GUARD_TIMEOUT_MS,
+            )
+            isWhatsAppLoginGuardActive = true
+        }
+
+        whatsappLoginGuardKeepAliveJob?.cancel()
+        whatsappLoginGuardKeepAliveJob = viewModelScope.launch {
+            while (isActive) {
+                delay(WHATSAPP_LOGIN_GUARD_REFRESH_INTERVAL_MS)
+                if (!isActive) {
+                    break
+                }
+                val refreshed = synchronized(whatsappLoginGuardLock) {
+                    if (!isWhatsAppLoginCoordinatorOwner || !isWhatsAppLoginGuardActive) {
+                        false
+                    } else {
+                        GatewayService.startWhatsAppLoginGuard(
+                            context = appContext,
+                            timeoutMs = WHATSAPP_LOGIN_GUARD_TIMEOUT_MS,
+                        )
+                        true
+                    }
+                }
+                if (!refreshed) break
             }
         }
     }
@@ -1853,14 +2522,8 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     fun cancelWhatsAppQr() {
         whatsappQrJob?.cancel()
         whatsappQrJob = null
-        wsClient?.close()
-        wsClient = null
+        finishWhatsAppLoginSession()
         _whatsappQrState.value = WhatsAppQrState.Idle
-        // 페어링 완료가 확인된 경우에만 재시작한다.
-        if (shouldRestartAfterWhatsAppPairing) {
-            restartGatewayIfRunning()
-            shouldRestartAfterWhatsAppPairing = false
-        }
     }
 
     override fun onCleared() {

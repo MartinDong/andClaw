@@ -25,8 +25,8 @@ class ProotManager(private val context: Context) {
         // Ubuntu 24.04 LTS arm64 base rootfs (bundled in assets)
         const val ROOTFS_ASSET = "rootfs.tar.gz.bin"
 
-        // Node.js 22 LTS arm64 linux (bundled in assets)
-        const val NODEJS_VERSION = "v22.12.0"
+        // Node.js 24 LTS arm64 linux (bundled in assets)
+        const val NODEJS_VERSION = "v24.2.0"
         const val NODEJS_ASSET = "node-arm64.tar.gz.bin"
         const val NODEJS_DIR_NAME = "node-$NODEJS_VERSION-linux-arm64"
 

@@ -35,7 +35,7 @@ import java.io.InputStreamReader
  * assets 구조:
  *   assets/
  *     rootfs.tar.gz.bin                     (~30MB)  Ubuntu 24.04 arm64 base
- *     node-arm64.tar.gz.bin                 (~25MB)  Node.js 22 arm64 linux
+ *     node-arm64.tar.gz.bin                 (~25MB)  Node.js 24 arm64 linux
  *     system-tools-arm64.tar.gz.bin         (~80-100MB) git, curl, python3, 시스템 libs
  *     openclaw/                             OpenClaw 파일 트리(증분 업데이트 대상)
  *     playwright-chromium-arm64.tar.gz.bin  (~150-180MB) Chromium headless_shell
@@ -391,6 +391,7 @@ class SetupManager(
         )
 
         saveVersion(nodeVersionFile)
+        saveFingerprint(nodeFingerprintFile, ProotManager.NODEJS_ASSET)
         log("   Node.js installation complete")
         updateStep(SetupStep.EXTRACTING_NODEJS, 0.38f)
     }
@@ -1000,14 +1001,15 @@ class SetupManager(
     // ── 번들 업데이트 (앱 업데이트 후 게이트웨이 시작 전 호출) ──
 
     /**
-     * 3개 번들을 각각 독립적으로 체크하고, 아웃데이트된 것만 재추출한다.
+     * Node.js + 3개 번들을 각각 독립적으로 체크하고, 아웃데이트된 것만 재추출한다.
      * SetupScreen 없이 GatewayService에서 직접 호출 가능.
      */
     fun isBundleUpdateRequired(includeOpenClawAssetUpdate: Boolean = false): Boolean {
         val openClawUpdateRequired = !prootManager.isOpenClawInstalled ||
             hasEncodedOpenClawPaths() ||
             (includeOpenClawAssetUpdate && isOpenClawOutdated())
-        return !prootManager.isSystemToolsInstalled ||
+        return shouldExtractNodeJsByMetadata() ||
+            !prootManager.isSystemToolsInstalled ||
             isToolsOutdated() ||
             openClawUpdateRequired ||
             !prootManager.isChromiumInstalled ||
@@ -1018,8 +1020,19 @@ class SetupManager(
         onStepChanged: ((SetupStep) -> Unit)? = null,
         includeOpenClawAssetUpdate: Boolean = false,
         forceOpenClawReinstall: Boolean = false,
+        includeNodeRuntimeUpdate: Boolean = true,
     ) = withContext(Dispatchers.IO) {
         val appVersion = getAppVersionCode()
+
+        if (includeNodeRuntimeUpdate && shouldExtractNodeJs()) {
+            android.util.Log.i(
+                "SetupManager",
+                "Node.js update required (installed=${getInstalledVersion(nodeVersionFile)}, app=$appVersion)",
+            )
+            onStepChanged?.invoke(SetupStep.EXTRACTING_NODEJS)
+            extractNodeJsFromAssets()
+            android.util.Log.i("SetupManager", "Node.js update complete")
+        }
 
         if (!prootManager.isSystemToolsInstalled || isToolsOutdated()) {
             android.util.Log.i("SetupManager", "System tools update required (installed=${getInstalledVersion(toolsVersionFile)}, app=$appVersion)")
@@ -1080,7 +1093,7 @@ class SetupManager(
             manualRetry = true,
             // Keep currently working runtime files until recovery actually succeeds.
             // Clearing install markers is enough to force re-install on the recovery path.
-            beforeUpdate = { clearDependentInstallMarkers() },
+            beforeUpdate = { clearDependentInstallMarkers(clearNodeMarkers = false) },
             allowWhenUpdateNotRequired = true,
             includeOpenClawAssetUpdate = true,
             forceOpenClawReinstall = true,
@@ -1099,52 +1112,94 @@ class SetupManager(
         val appVersion = getAppVersionCode()
         val prefs = preferencesManager
         var consumeManualRetryOnFailure = false
-        val updateRequired = forceOpenClawReinstall || isBundleUpdateRequired(
-            includeOpenClawAssetUpdate = includeOpenClawAssetUpdate,
-        )
-        if (!updateRequired && !allowWhenUpdateNotRequired) {
-            prefs?.clearBundleUpdateFailure(appVersion)
-            return@withContext BundleUpdateAttemptResult(
-                outcome = BundleUpdateOutcome.SKIPPED_NOT_REQUIRED,
-            )
-        }
+        val failure = prefs?.getBundleUpdateFailure(appVersion)?.let(::toFailureState)
 
-        if (prefs != null) {
-            val failure = toFailureState(prefs.getBundleUpdateFailure(appVersion))
-            if (!failure.inCooldown && failure.manualRetryUsed) {
-                // A previous cooldown window has ended; manual retry allowance reopens.
-                prefs.setBundleUpdateManualRetryUsed(appVersion, false)
-            }
-            if (failure.inCooldown) {
-                if (!manualRetry) {
-                    return@withContext BundleUpdateAttemptResult(
-                        outcome = BundleUpdateOutcome.SKIPPED_COOLDOWN,
-                        failure = failure,
-                    )
-                }
-                if (failure.manualRetryUsed) {
-                    return@withContext BundleUpdateAttemptResult(
-                        outcome = BundleUpdateOutcome.SKIPPED_MANUAL_RETRY_EXHAUSTED,
-                        failure = failure,
-                    )
-                }
-                consumeManualRetryOnFailure = true
-            }
+        if (failure != null && !failure.inCooldown && failure.manualRetryUsed) {
+            // A previous cooldown window has ended; manual retry allowance reopens.
+            prefs.setBundleUpdateManualRetryUsed(appVersion, false)
+        }
+        if (failure?.inCooldown == true && manualRetry && !failure.manualRetryUsed) {
+            consumeManualRetryOnFailure = true
         }
 
         return@withContext try {
-            beforeUpdate?.invoke()
-            withTimeout(timeoutMs) {
+            val result = withTimeout(timeoutMs) {
+                val nodeRepairRequired = shouldExtractNodeJs()
+                val updateRequired = forceOpenClawReinstall ||
+                    nodeRepairRequired ||
+                    isBundleUpdateRequired(
+                        includeOpenClawAssetUpdate = includeOpenClawAssetUpdate,
+                    )
+                if (!updateRequired && !allowWhenUpdateNotRequired) {
+                    prefs?.clearBundleUpdateFailure(appVersion)
+                    return@withTimeout BundleUpdateAttemptResult(
+                        outcome = BundleUpdateOutcome.SKIPPED_NOT_REQUIRED,
+                    )
+                }
+
+                var skipBundleUpdateDueToPolicy = false
+                var skipOutcome = BundleUpdateOutcome.SKIPPED_NOT_REQUIRED
+                var skipFailure: BundleUpdateFailureState? = null
+                if (failure?.inCooldown == true) {
+                    if (!manualRetry) {
+                        if (!nodeRepairRequired) {
+                            return@withTimeout BundleUpdateAttemptResult(
+                                outcome = BundleUpdateOutcome.SKIPPED_COOLDOWN,
+                                failure = failure,
+                            )
+                        }
+                        skipBundleUpdateDueToPolicy = true
+                        skipOutcome = BundleUpdateOutcome.SKIPPED_COOLDOWN
+                        skipFailure = failure
+                    } else if (failure.manualRetryUsed) {
+                        if (!nodeRepairRequired) {
+                            return@withTimeout BundleUpdateAttemptResult(
+                                outcome = BundleUpdateOutcome.SKIPPED_MANUAL_RETRY_EXHAUSTED,
+                                failure = failure,
+                            )
+                        }
+                        skipBundleUpdateDueToPolicy = true
+                        skipOutcome = BundleUpdateOutcome.SKIPPED_MANUAL_RETRY_EXHAUSTED
+                        skipFailure = failure
+                    }
+                }
+
+                if (!skipBundleUpdateDueToPolicy) {
+                    beforeUpdate?.invoke()
+                }
+
+                if (nodeRepairRequired) {
+                    android.util.Log.i(
+                        "SetupManager",
+                        "Node.js runtime refresh required before bundle update (app=$appVersion)",
+                    )
+                    onStepChanged?.invoke(SetupStep.EXTRACTING_NODEJS)
+                    extractNodeJsFromAssets()
+                    android.util.Log.i("SetupManager", "Node.js runtime refresh complete")
+                }
+
+                if (skipBundleUpdateDueToPolicy) {
+                    return@withTimeout BundleUpdateAttemptResult(
+                        outcome = skipOutcome,
+                        failure = skipFailure,
+                    )
+                }
+
                 updateBundleIfNeeded(
                     onStepChanged = onStepChanged,
                     includeOpenClawAssetUpdate = includeOpenClawAssetUpdate,
                     forceOpenClawReinstall = forceOpenClawReinstall,
+                    includeNodeRuntimeUpdate = false,
+                )
+
+                BundleUpdateAttemptResult(
+                    outcome = BundleUpdateOutcome.UPDATED,
                 )
             }
-            prefs?.clearBundleUpdateFailure(appVersion)
-            BundleUpdateAttemptResult(
-                outcome = BundleUpdateOutcome.UPDATED,
-            )
+            if (result.outcome == BundleUpdateOutcome.UPDATED) {
+                prefs?.clearBundleUpdateFailure(appVersion)
+            }
+            result
         } catch (error: TimeoutCancellationException) {
             val summary = (error.message ?: error::class.java.simpleName).take(MAX_ERROR_LENGTH)
             if (consumeManualRetryOnFailure) {
@@ -1200,6 +1255,9 @@ class SetupManager(
     private val nodeVersionFile: File
         get() = File(prootManager.rootfsDir, ".node_version")
 
+    private val nodeFingerprintFile: File
+        get() = File(prootManager.rootfsDir, ".node_fingerprint")
+
     private val openclawVersionFile: File
         get() = File(prootManager.rootfsDir, ".bundle_version")
 
@@ -1237,6 +1295,12 @@ class SetupManager(
         file.writeText(getAppVersionCode().toString())
     }
 
+    private fun getInstalledNodeVersion(): String {
+        return runCatching {
+            prootManager.executeAndCapture("node --version")?.trim().orEmpty()
+        }.getOrDefault("")
+    }
+
     private fun getInstalledFingerprint(file: File): String {
         return try {
             file.readText().trim()
@@ -1271,8 +1335,19 @@ class SetupManager(
         return !prootManager.isRootfsInstalled || getInstalledVersion(rootfsReadyFile) <= 0
     }
 
+    private fun shouldExtractNodeJsByMetadata(): Boolean {
+        if (!prootManager.isNodeInstalled) return true
+        return isAssetOutdated(
+            assetName = ProotManager.NODEJS_ASSET,
+            fingerprintFile = nodeFingerprintFile,
+            versionFile = nodeVersionFile,
+        )
+    }
+
     internal fun shouldExtractNodeJs(): Boolean {
-        return !prootManager.isNodeInstalled || getInstalledVersion(nodeVersionFile) <= 0
+        if (shouldExtractNodeJsByMetadata()) return true
+        if (getInstalledNodeVersion() != ProotManager.NODEJS_VERSION) return true
+        return false
     }
 
     internal fun hasEncodedOpenClawPaths(): Boolean {
@@ -1282,8 +1357,11 @@ class SetupManager(
         return openclawRoot.walkTopDown().any { it.name.startsWith(OPENCLAW_UNDERSCORE_PREFIX) }
     }
 
-    private fun clearDependentInstallMarkers() {
-        nodeVersionFile.delete()
+    private fun clearDependentInstallMarkers(clearNodeMarkers: Boolean = true) {
+        if (clearNodeMarkers) {
+            nodeVersionFile.delete()
+            nodeFingerprintFile.delete()
+        }
         toolsVersionFile.delete()
         openclawVersionFile.delete()
         playwrightVersionFile.delete()
@@ -1466,7 +1544,10 @@ class SetupManager(
         }
 
         log("   Checking OpenClaw...")
-        executeInProot("openclaw --version 2>/dev/null || openclaw --help 2>&1 | head -1")
+        executeInProot(
+            "export NODE_OPTIONS='--require /root/.openclaw-patch.js' && " +
+                "(openclaw --version 2>/dev/null || openclaw --help 2>&1 | head -1)"
+        )
         if (!prootManager.isOpenClawInstalled) {
             throw SetupException("OpenClaw validation failed")
         }

@@ -74,6 +74,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.coderred.andclaw.BuildConfig
 import com.coderred.andclaw.R
@@ -86,6 +89,8 @@ import com.coderred.andclaw.ui.component.ModelSelectionDialog
 import com.coderred.andclaw.ui.component.WhatsAppQrDialog
 import com.coderred.andclaw.ui.screen.dashboard.WhatsAppQrState
 import java.util.Locale
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Suppress("FunctionName")
@@ -110,6 +115,9 @@ fun SettingsScreen(
     val discordGuildAllowlist by viewModel.discordGuildAllowlist.collectAsState()
     val discordRequireMention by viewModel.discordRequireMention.collectAsState()
     val braveSearchApiKey by viewModel.braveSearchApiKey.collectAsState()
+    val memorySearchEnabled by viewModel.memorySearchEnabled.collectAsState()
+    val memorySearchProvider by viewModel.memorySearchProvider.collectAsState()
+    val memorySearchApiKey by viewModel.memorySearchApiKey.collectAsState()
     val isDoctorFixRunning by viewModel.isDoctorFixRunning.collectAsState()
     val doctorFixResult by viewModel.doctorFixResult.collectAsState()
     val isRecoveryInstallRunning by viewModel.isRecoveryInstallRunning.collectAsState()
@@ -132,6 +140,7 @@ fun SettingsScreen(
     val codexAuthDebugLine by viewModel.codexAuthDebugLine.collectAsState()
     val bugReportUiState by viewModel.bugReportUiState.collectAsState()
     val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
     val isOpenAiProviderFamily = apiProvider == "openai" || apiProvider == "openai-codex"
     val openAiProviderLabel = stringResource(R.string.onboarding_provider_openai)
     val selectedModelDisplay = when {
@@ -144,6 +153,14 @@ fun SettingsScreen(
         selectedModel.startsWith("google/") -> selectedModel.removePrefix("google/")
         else -> selectedModel
     }
+    val memorySearchProviderDisplay = when (memorySearchProvider) {
+        "openai" -> stringResource(R.string.settings_memory_search_provider_openai)
+        "gemini" -> stringResource(R.string.settings_memory_search_provider_gemini)
+        "voyage" -> stringResource(R.string.settings_memory_search_provider_voyage)
+        "mistral" -> stringResource(R.string.settings_memory_search_provider_mistral)
+        "local" -> stringResource(R.string.settings_memory_search_provider_local)
+        else -> stringResource(R.string.settings_memory_search_provider_auto)
+    }
 
     var showModelDialog by remember { mutableStateOf(false) }
     var showProviderDialog by remember { mutableStateOf(false) }
@@ -155,6 +172,8 @@ fun SettingsScreen(
     var showDiscordTokenDialog by remember { mutableStateOf(false) }
     var showDiscordGuildAllowlistDialog by remember { mutableStateOf(false) }
     var showBraveKeyDialog by remember { mutableStateOf(false) }
+    var showMemorySearchProviderDialog by remember { mutableStateOf(false) }
+    var showMemorySearchApiKeyDialog by remember { mutableStateOf(false) }
     var showOssLicensesDialog by remember { mutableStateOf(false) }
     var showRecoveryInstallConfirmDialog by remember { mutableStateOf(false) }
     var showOpenClawUpdateConfirmDialog by remember { mutableStateOf(false) }
@@ -194,6 +213,21 @@ fun SettingsScreen(
             } finally {
                 viewModel.consumeCodexAuthUrl()
             }
+        }
+    }
+
+    LaunchedEffect(lifecycleOwner) {
+        lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+            while (isActive) {
+                viewModel.refreshWhatsAppLinkState()
+                delay(5000)
+            }
+        }
+    }
+
+    LaunchedEffect(whatsappQrState) {
+        if (whatsappQrState is WhatsAppQrState.QrReady) {
+            viewModel.confirmWhatsAppQrScanned()
         }
     }
 
@@ -444,10 +478,47 @@ fun SettingsScreen(
                         },
                         onClick = { showBraveKeyDialog = true },
                     )
+
                     HorizontalDivider(
                         modifier = Modifier.padding(horizontal = 20.dp),
                         color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
                     )
+
+                    SettingToggle(
+                        title = stringResource(R.string.settings_memory_search_title),
+                        description = stringResource(R.string.settings_memory_search_desc),
+                        checked = memorySearchEnabled,
+                        onCheckedChange = { enabled ->
+                            viewModel.setMemorySearchEnabled(enabled)
+                            showRestartHint = true
+                        },
+                    )
+
+                    if (memorySearchEnabled) {
+                        SettingClickableRow(
+                            title = stringResource(R.string.settings_memory_search_provider),
+                            value = memorySearchProviderDisplay,
+                            onClick = { showMemorySearchProviderDialog = true },
+                            indent = true,
+                        )
+                    }
+
+                    SettingClickableRow(
+                        title = stringResource(R.string.settings_memory_search_api_key),
+                        value = if (memorySearchApiKey.isNotBlank()) {
+                            stringResource(R.string.settings_api_key_configured) + " (${memorySearchApiKey.take(8)}...)"
+                        } else {
+                            stringResource(R.string.settings_memory_search_api_key_optional)
+                        },
+                        onClick = { showMemorySearchApiKeyDialog = true },
+                        indent = true,
+                    )
+
+                    HorizontalDivider(
+                        modifier = Modifier.padding(horizontal = 20.dp),
+                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
+                    )
+
                     SettingClickableRow(
                         title = stringResource(R.string.settings_openclaw_doctor_fix),
                         value = if (isDoctorFixRunning) {
@@ -486,7 +557,10 @@ fun SettingsScreen(
                             stringResource(R.string.whatsapp_connect_btn)
                         },
                         enabled = !isChannelDisconnecting,
-                        onClick = { showWhatsAppActionDialog = true },
+                        onClick = {
+                            viewModel.refreshWhatsAppLinkState()
+                            showWhatsAppActionDialog = true
+                        },
                     )
 
                     HorizontalDivider(
@@ -872,6 +946,30 @@ fun SettingsScreen(
         )
     }
 
+    if (showMemorySearchProviderDialog) {
+        MemorySearchProviderDialog(
+            currentProvider = memorySearchProvider,
+            onSelectProvider = { provider ->
+                viewModel.setMemorySearchProvider(provider)
+                showMemorySearchProviderDialog = false
+                showRestartHint = true
+            },
+            onDismiss = { showMemorySearchProviderDialog = false },
+        )
+    }
+
+    if (showMemorySearchApiKeyDialog) {
+        MemorySearchApiKeyDialog(
+            currentKey = memorySearchApiKey,
+            onSave = { key ->
+                viewModel.setMemorySearchApiKey(key)
+                showMemorySearchApiKeyDialog = false
+                showRestartHint = true
+            },
+            onDismiss = { showMemorySearchApiKeyDialog = false },
+        )
+    }
+
     if (showOpenClawUpdateConfirmDialog) {
         AlertDialog(
             onDismissRequest = { showOpenClawUpdateConfirmDialog = false },
@@ -1141,7 +1239,9 @@ fun SettingsScreen(
 
     if (showWhatsAppActionDialog) {
         AlertDialog(
-            onDismissRequest = { showWhatsAppActionDialog = false },
+            // 외부 터치/뒤로가기로 닫히지 않게 고정한다.
+            // 사용자는 버튼으로만 명시적으로 닫거나 동작을 선택한다.
+            onDismissRequest = {},
             shape = RoundedCornerShape(24.dp),
             title = { Text(stringResource(R.string.settings_channel_whatsapp)) },
             text = {
@@ -1166,14 +1266,19 @@ fun SettingsScreen(
             },
             dismissButton = {
                 if (isWhatsAppLinked) {
-                    TextButton(
-                        enabled = !isChannelDisconnecting,
-                        onClick = {
-                            showWhatsAppActionDialog = false
-                            viewModel.disconnectWhatsApp()
-                        },
-                    ) {
-                        Text(stringResource(R.string.settings_channel_disconnect_action))
+                    Row {
+                        TextButton(onClick = { showWhatsAppActionDialog = false }) {
+                            Text(stringResource(android.R.string.cancel))
+                        }
+                        TextButton(
+                            enabled = !isChannelDisconnecting,
+                            onClick = {
+                                showWhatsAppActionDialog = false
+                                viewModel.disconnectWhatsApp()
+                            },
+                        ) {
+                            Text(stringResource(R.string.settings_channel_disconnect_action))
+                        }
                     }
                 } else {
                     TextButton(onClick = { showWhatsAppActionDialog = false }) {
@@ -1552,6 +1657,54 @@ private fun ProviderSelectionDialog(
 }
 
 @Composable
+private fun MemorySearchProviderDialog(
+    currentProvider: String,
+    onSelectProvider: (String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val providers = listOf(
+        "auto" to stringResource(R.string.settings_memory_search_provider_auto),
+        "openai" to stringResource(R.string.settings_memory_search_provider_openai),
+        "gemini" to stringResource(R.string.settings_memory_search_provider_gemini),
+        "voyage" to stringResource(R.string.settings_memory_search_provider_voyage),
+        "mistral" to stringResource(R.string.settings_memory_search_provider_mistral),
+        "local" to stringResource(R.string.settings_memory_search_provider_local),
+    )
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        shape = RoundedCornerShape(24.dp),
+        title = { Text(stringResource(R.string.settings_memory_search_provider_dialog_title)) },
+        text = {
+            Column {
+                providers.forEach { (id, label) ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { onSelectProvider(id) }
+                            .heightIn(min = 48.dp)
+                            .padding(vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        RadioButton(
+                            selected = currentProvider == id,
+                            onClick = { onSelectProvider(id) },
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(text = label, style = MaterialTheme.typography.bodyMedium)
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.settings_api_key_cancel))
+            }
+        },
+    )
+}
+
+@Composable
 private fun GptSubscriptionDialog(
     currentProvider: String,
     onSelect: (Boolean) -> Unit,
@@ -1856,6 +2009,62 @@ private fun BraveSearchKeyDialog(
             TextButton(
                 onClick = { onSave(keyText.trim()) },
             ) {
+                Text(stringResource(R.string.settings_api_key_save))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.settings_api_key_cancel))
+            }
+        },
+    )
+}
+
+@Composable
+private fun MemorySearchApiKeyDialog(
+    currentKey: String,
+    onSave: (String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var keyText by remember { mutableStateOf(currentKey) }
+    var passwordVisible by remember { mutableStateOf(false) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        shape = RoundedCornerShape(24.dp),
+        title = { Text(stringResource(R.string.settings_memory_search_api_key)) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(
+                    text = stringResource(R.string.settings_memory_search_api_key_desc),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                OutlinedTextField(
+                    value = keyText,
+                    onValueChange = { keyText = it },
+                    label = { Text(stringResource(R.string.settings_api_key_hint)) },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                    visualTransformation = if (passwordVisible) {
+                        VisualTransformation.None
+                    } else {
+                        PasswordVisualTransformation()
+                    },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                    trailingIcon = {
+                        IconButton(onClick = { passwordVisible = !passwordVisible }) {
+                            Icon(
+                                if (passwordVisible) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                                contentDescription = null,
+                            )
+                        }
+                    },
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { onSave(keyText.trim()) }) {
                 Text(stringResource(R.string.settings_api_key_save))
             }
         },

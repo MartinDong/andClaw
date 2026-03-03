@@ -58,11 +58,15 @@ class GatewayService : Service() {
         private const val START_WAKE_LOCK_TIMEOUT_BACKGROUND_MS = 23L * 60L * 1000L
         private const val START_TERMINAL_WAIT_TIMEOUT_MS = 120_000L
         private const val RESTART_WAKE_LOCK_TIMEOUT_MS = 120_000L
+        private const val WHATSAPP_LOGIN_WAKE_LOCK_TIMEOUT_MS = 4L * 60L * 1000L
         const val ACTION_START = "com.coderred.andclaw.action.START"
         const val ACTION_STOP = "com.coderred.andclaw.action.STOP"
         const val ACTION_RESTART = "com.coderred.andclaw.action.RESTART"
+        const val ACTION_WHATSAPP_LOGIN_GUARD_START = "com.coderred.andclaw.action.WHATSAPP_LOGIN_GUARD_START"
+        const val ACTION_WHATSAPP_LOGIN_GUARD_STOP = "com.coderred.andclaw.action.WHATSAPP_LOGIN_GUARD_STOP"
         private const val EXTRA_FROM_WATCHDOG = "from_watchdog"
         private const val EXTRA_USER_INITIATED = "user_initiated"
+        private const val EXTRA_WAKE_LOCK_TIMEOUT_MS = "wake_lock_timeout_ms"
 
         private var _instance: GatewayService? = null
 
@@ -106,6 +110,25 @@ class GatewayService : Service() {
             }
             context.startService(intent)
         }
+
+        fun startWhatsAppLoginGuard(
+            context: Context,
+            timeoutMs: Long = WHATSAPP_LOGIN_WAKE_LOCK_TIMEOUT_MS,
+        ) {
+            // 로그인 가드는 "이미 떠있는 GatewayService의 보조 wakelock" 용도다.
+            // 서비스가 꺼져있을 때 guard 시작으로 서비스를 새로 띄우면
+            // guard 종료 후에도 FGS가 남는 lifecycle 문제가 생길 수 있어 no-op 처리한다.
+            val service = _instance ?: return
+            val normalizedTimeoutMs = timeoutMs.coerceIn(15_000L, 10L * 60L * 1000L)
+            service.acquireWhatsAppLoginWakeLock(normalizedTimeoutMs)
+        }
+
+        fun stopWhatsAppLoginGuard() {
+            // Guard STOP은 "서비스를 깨워서 액션 전달"이 아니라,
+            // 이미 살아있는 서비스 인스턴스의 로그인 전용 wakelock만 해제해야 한다.
+            // (서비스가 꺼져있는 경우에는 no-op)
+            _instance?.releaseWhatsAppLoginWakeLock()
+        }
     }
 
     private lateinit var pm: ProcessManager
@@ -117,6 +140,8 @@ class GatewayService : Service() {
     private val desiredRunningMutex = Mutex()
     private val wakeLockGuard = Any()
     private var activeWakeLock: PowerManager.WakeLock? = null
+    private val whatsappLoginWakeLockGuard = Any()
+    private var whatsappLoginWakeLock: PowerManager.WakeLock? = null
     private val chargingWakeLockGuard = Any()
     private var chargingWakeLock: PowerManager.WakeLock? = null
     private var isBatteryReceiverRegistered = false
@@ -168,7 +193,24 @@ class GatewayService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val action = intent?.action
+        if (action == ACTION_WHATSAPP_LOGIN_GUARD_START) {
+            val timeoutMs = intent.getLongExtra(EXTRA_WAKE_LOCK_TIMEOUT_MS, WHATSAPP_LOGIN_WAKE_LOCK_TIMEOUT_MS)
+                .coerceIn(15_000L, 10L * 60L * 1000L)
+            acquireWhatsAppLoginWakeLock(timeoutMs)
+            return START_STICKY
+        }
+        if (action == ACTION_WHATSAPP_LOGIN_GUARD_STOP) {
+            releaseWhatsAppLoginWakeLock()
+            return START_STICKY
+        }
         if (action == null) {
+            if (isWhatsAppLoginGuardActive()) {
+                android.util.Log.i(
+                    "GatewayService",
+                    "Skip sticky recovery start while WhatsApp login guard is active",
+                )
+                return START_STICKY
+            }
             // START_STICKY 재생성(null intent) 시 이전 사용자 의도가 running이면 복구를 재시도한다.
             runAction(GatewayActionType.START, startId) { actionToken, actionStartId ->
                 val shouldRecover = prefs.gatewayWasRunning.first() && prefs.isSetupComplete.first()
@@ -191,6 +233,13 @@ class GatewayService : Service() {
         val userInitiated = intent.getBooleanExtra(EXTRA_USER_INITIATED, true)
         when (action) {
             ACTION_START -> {
+                if (!userInitiated && isWhatsAppLoginGuardActive()) {
+                    android.util.Log.i(
+                        "GatewayService",
+                        "Skip auto start while WhatsApp login guard is active",
+                    )
+                    return START_STICKY
+                }
                 runAction(GatewayActionType.START, startId) { actionToken, actionStartId ->
                     handleStart(
                         fromWatchdog = fromWatchdog,
@@ -201,6 +250,13 @@ class GatewayService : Service() {
                 }
             }
             ACTION_RESTART -> {
+                if (!userInitiated && isWhatsAppLoginGuardActive()) {
+                    android.util.Log.i(
+                        "GatewayService",
+                        "Skip auto restart while WhatsApp login guard is active",
+                    )
+                    return START_STICKY
+                }
                 runAction(GatewayActionType.RESTART, startId) { actionToken, actionStartId ->
                     handleRestart(
                         userInitiated = userInitiated,
@@ -223,6 +279,7 @@ class GatewayService : Service() {
     override fun onDestroy() {
         stopChargingWakeLockController()
         releaseActiveWakeLock()
+        releaseWhatsAppLoginWakeLock()
         pm.stop()
         serviceScope.cancel()
         _instance = null
@@ -400,6 +457,10 @@ class GatewayService : Service() {
             val modelMaxOutput = prefs.selectedModelMaxOutput.first()
             val openAiCompatibleBaseUrl = prefs.openAiCompatibleBaseUrl.first()
             val braveSearchApiKey = prefs.braveSearchApiKey.first()
+            val hasExplicitMemorySearchPrefs = prefs.hasExplicitMemorySearchPrefs.first()
+            val memorySearchEnabled = prefs.memorySearchEnabled.first()
+            val memorySearchProvider = prefs.memorySearchProvider.first()
+            val memorySearchApiKey = prefs.memorySearchApiKey.first()
 
             if (!setDesiredRunningAndWatchdog(shouldRun = true, actionToken = actionToken)) {
                 return@withTimedWakeLock
@@ -417,6 +478,10 @@ class GatewayService : Service() {
                 modelContext,
                 modelMaxOutput,
                 braveSearchApiKey,
+                hasExplicitMemorySearchPrefs,
+                memorySearchEnabled,
+                memorySearchProvider,
+                memorySearchApiKey,
             )
 
             val finalStatus = awaitGatewayStartupTerminalState(START_TERMINAL_WAIT_TIMEOUT_MS)
@@ -456,6 +521,10 @@ class GatewayService : Service() {
             val modelMaxOutput = prefs.selectedModelMaxOutput.first()
             val openAiCompatibleBaseUrl = prefs.openAiCompatibleBaseUrl.first()
             val braveSearchApiKey = prefs.braveSearchApiKey.first()
+            val hasExplicitMemorySearchPrefs = prefs.hasExplicitMemorySearchPrefs.first()
+            val memorySearchEnabled = prefs.memorySearchEnabled.first()
+            val memorySearchProvider = prefs.memorySearchProvider.first()
+            val memorySearchApiKey = prefs.memorySearchApiKey.first()
 
             if (!isActionCurrent(actionToken)) return@withTimedWakeLock
             pm.restart(
@@ -469,6 +538,10 @@ class GatewayService : Service() {
                 modelContext,
                 modelMaxOutput,
                 braveSearchApiKey,
+                hasExplicitMemorySearchPrefs,
+                memorySearchEnabled,
+                memorySearchProvider,
+                memorySearchApiKey,
             )
             val finalStatus = awaitGatewayStartupTerminalState(RESTART_WAKE_LOCK_TIMEOUT_MS)
             if (!isActionCurrent(actionToken)) return@withTimedWakeLock
@@ -683,6 +756,41 @@ class GatewayService : Service() {
         }
         if (wakeLock?.isHeld == true) {
             wakeLock.release()
+        }
+    }
+
+    private fun acquireWhatsAppLoginWakeLock(timeoutMs: Long) {
+        synchronized(whatsappLoginWakeLockGuard) {
+            val lock = whatsappLoginWakeLock ?: run {
+                val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
+                @Suppress("deprecation")
+                powerManager.newWakeLock(
+                    PowerManager.PARTIAL_WAKE_LOCK,
+                    "andClaw::WhatsAppLoginWakeLock",
+                ).apply { setReferenceCounted(false) }
+            }
+            if (lock.isHeld) {
+                lock.release()
+            }
+            lock.acquire(timeoutMs)
+            whatsappLoginWakeLock = lock
+        }
+    }
+
+    private fun releaseWhatsAppLoginWakeLock() {
+        val lock = synchronized(whatsappLoginWakeLockGuard) {
+            val current = whatsappLoginWakeLock
+            whatsappLoginWakeLock = null
+            current
+        }
+        if (lock?.isHeld == true) {
+            lock.release()
+        }
+    }
+
+    private fun isWhatsAppLoginGuardActive(): Boolean {
+        return synchronized(whatsappLoginWakeLockGuard) {
+            whatsappLoginWakeLock?.isHeld == true
         }
     }
 

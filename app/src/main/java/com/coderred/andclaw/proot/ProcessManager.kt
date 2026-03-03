@@ -241,6 +241,21 @@ class ProcessManager(
     companion object {
         private const val TAG = "ProcessManager"
         private const val GATEWAY_PORT = 18789
+        private const val DEFAULT_MEMORY_SEARCH_PROVIDER = "auto"
+        private val REMOTE_MEMORY_SEARCH_PROVIDERS = setOf("auto", "openai", "gemini", "voyage", "mistral")
+
+        private fun normalizeMemorySearchProvider(raw: String): String {
+            return when (raw.trim().lowercase()) {
+                "", "auto" -> "auto"
+                "openai", "gemini", "voyage", "mistral", "local" -> raw.trim().lowercase()
+                else -> DEFAULT_MEMORY_SEARCH_PROVIDER
+            }
+        }
+
+        private fun supportsMemorySearchRemoteApiKey(provider: String): Boolean {
+            val normalized = normalizeMemorySearchProvider(provider)
+            return normalized in REMOTE_MEMORY_SEARCH_PROVIDERS
+        }
     }
 
     private val openClawPairingDenyScript: String by lazy { buildOpenClawPairingDenyScript() }
@@ -268,6 +283,9 @@ class ProcessManager(
     private var lastApiProvider: String = ""
     private var lastApiKey: String = ""
     private var lastBraveSearchApiKey: String = ""
+    private var lastMemorySearchEnabled: Boolean = true
+    private var lastMemorySearchProvider: String = DEFAULT_MEMORY_SEARCH_PROVIDER
+    private var lastMemorySearchApiKey: String = ""
 
     val isRunning: Boolean
         get() = _gatewayState.value.status == GatewayStatus.RUNNING
@@ -290,14 +308,26 @@ class ProcessManager(
         modelContext: Int = 200000,
         modelMaxOutput: Int = 4096,
         braveSearchApiKey: String = "",
+        applyMemorySearchConfig: Boolean = true,
+        memorySearchEnabled: Boolean = true,
+        memorySearchProvider: String = DEFAULT_MEMORY_SEARCH_PROVIDER,
+        memorySearchApiKey: String = "",
     ) {
         val status = _gatewayState.value.status
         if (status == GatewayStatus.RUNNING || status == GatewayStatus.STARTING) return
+
+        val normalizedMemorySearchProvider = normalizeMemorySearchProvider(memorySearchProvider)
+        val normalizedMemorySearchApiKey = memorySearchApiKey.trim()
 
         lastChannelConfig = channelConfig
         lastApiProvider = apiProvider
         lastApiKey = apiKey
         lastBraveSearchApiKey = braveSearchApiKey
+        if (applyMemorySearchConfig) {
+            lastMemorySearchEnabled = memorySearchEnabled
+            lastMemorySearchProvider = normalizedMemorySearchProvider
+            lastMemorySearchApiKey = normalizedMemorySearchApiKey
+        }
 
         _gatewayState.value = _gatewayState.value.copy(
             status = GatewayStatus.STARTING,
@@ -338,6 +368,9 @@ class ProcessManager(
                     modelImages = modelImages,
                     modelContext = modelContext,
                     modelMaxOutput = modelMaxOutput,
+                    memorySearchEnabled = memorySearchEnabled.takeIf { applyMemorySearchConfig },
+                    memorySearchProvider = normalizedMemorySearchProvider.takeIf { applyMemorySearchConfig },
+                    memorySearchApiKey = normalizedMemorySearchApiKey.takeIf { applyMemorySearchConfig },
                 )
 
                 // 채널 설정 기록
@@ -373,6 +406,13 @@ class ProcessManager(
                     // Brave Search API 키
                     if (braveSearchApiKey.isNotBlank()) {
                         put("BRAVE_API_KEY", braveSearchApiKey)
+                    }
+                    if (applyMemorySearchConfig &&
+                        memorySearchEnabled &&
+                        supportsMemorySearchRemoteApiKey(normalizedMemorySearchProvider) &&
+                        normalizedMemorySearchApiKey.isNotBlank()
+                    ) {
+                        put("MEMORY_SEARCH_API_KEY", normalizedMemorySearchApiKey)
                     }
 
                     // 채널 봇 토큰
@@ -512,6 +552,10 @@ class ProcessManager(
         modelContext: Int = 200000,
         modelMaxOutput: Int = 4096,
         braveSearchApiKey: String = "",
+        applyMemorySearchConfig: Boolean = true,
+        memorySearchEnabled: Boolean = true,
+        memorySearchProvider: String = DEFAULT_MEMORY_SEARCH_PROVIDER,
+        memorySearchApiKey: String = "",
     ) {
         stop()
         start(
@@ -525,6 +569,10 @@ class ProcessManager(
             modelContext = modelContext,
             modelMaxOutput = modelMaxOutput,
             braveSearchApiKey = braveSearchApiKey,
+            applyMemorySearchConfig = applyMemorySearchConfig,
+            memorySearchEnabled = memorySearchEnabled,
+            memorySearchProvider = memorySearchProvider,
+            memorySearchApiKey = memorySearchApiKey,
         )
     }
 
@@ -658,6 +706,9 @@ class ProcessManager(
         modelImages: Boolean = false,
         modelContext: Int = 200000,
         modelMaxOutput: Int = 4096,
+        memorySearchEnabled: Boolean? = null,
+        memorySearchProvider: String? = null,
+        memorySearchApiKey: String? = null,
     ) {
         val configFile = File(prootManager.rootfsDir, "root/.openclaw/openclaw.json")
 
@@ -754,6 +805,76 @@ class ProcessManager(
             }
 
             var changed = sanitizeKnownIncompatibleConfigKeys(json)
+
+            val shouldApplyMemorySearchConfig =
+                memorySearchEnabled != null || memorySearchProvider != null || memorySearchApiKey != null
+            if (shouldApplyMemorySearchConfig) {
+                val memorySearch = defaults.optJSONObject("memorySearch")
+                    ?: JSONObject().also { defaults.put("memorySearch", it) }
+                val normalizedProvider = memorySearchProvider?.let(::normalizeMemorySearchProvider)
+                val enabled = memorySearchEnabled ?: memorySearch.optBoolean("enabled", true)
+                val existingProvider = normalizeMemorySearchProvider(
+                    memorySearch.optString("provider").ifBlank { DEFAULT_MEMORY_SEARCH_PROVIDER }
+                )
+                val effectiveProvider = normalizedProvider ?: existingProvider
+
+                if (memorySearch.optBoolean("enabled", true) != enabled || !memorySearch.has("enabled")) {
+                    memorySearch.put("enabled", enabled)
+                    changed = true
+                }
+
+                if (enabled) {
+                    if (normalizedProvider != null) {
+                        if (normalizedProvider == "auto") {
+                            if (memorySearch.has("provider")) {
+                                memorySearch.remove("provider")
+                                changed = true
+                            }
+                        } else if (memorySearch.optString("provider") != normalizedProvider) {
+                            memorySearch.put("provider", normalizedProvider)
+                            changed = true
+                        }
+                    }
+
+                    val normalizedApiKey = memorySearchApiKey?.trim().orEmpty()
+                    val shouldUseRemoteApiKeyRef =
+                        normalizedApiKey.isNotBlank() &&
+                            supportsMemorySearchRemoteApiKey(effectiveProvider)
+                    val remoteConfig = memorySearch.optJSONObject("remote")
+                    if (effectiveProvider == "auto" && normalizedApiKey.isNotBlank()) {
+                        addLog(
+                            "[andClaw] Memory Search override key is applied in auto mode. " +
+                                "For non-OpenAI keys, choose an explicit provider."
+                        )
+                    }
+                    if (shouldUseRemoteApiKeyRef) {
+                        val remote = remoteConfig ?: JSONObject().also {
+                            memorySearch.put("remote", it)
+                            changed = true
+                        }
+                        val targetRef = "\${MEMORY_SEARCH_API_KEY}"
+                        if (remote.optString("apiKey") != targetRef) {
+                            remote.put("apiKey", targetRef)
+                            changed = true
+                        }
+                    } else if (remoteConfig != null && remoteConfig.has("apiKey")) {
+                        remoteConfig.remove("apiKey")
+                        changed = true
+                        if (remoteConfig.length() == 0) {
+                            memorySearch.remove("remote")
+                        }
+                    }
+                } else {
+                    if (memorySearch.has("provider")) {
+                        memorySearch.remove("provider")
+                        changed = true
+                    }
+                    if (memorySearch.has("remote")) {
+                        memorySearch.remove("remote")
+                        changed = true
+                    }
+                }
+            }
 
             // Playwright Chromium 바이너리 경로 탐색 + proot wrapper 생성
             val playwrightDir = File(prootManager.rootfsDir, "root/.cache/ms-playwright")
@@ -1058,7 +1179,9 @@ class ProcessManager(
     private fun stopSupervisedGatewayIfRunning() {
         try {
             val result = prootManager.executeWithResult(
-                command = "export NODE_OPTIONS='--require /root/.openclaw-patch.js' && openclaw gateway stop >/dev/null 2>&1 || true",
+                command =
+                    "export NODE_OPTIONS='--require /root/.openclaw-patch.js' && " +
+                        "openclaw gateway stop >/dev/null 2>&1 || true",
                 timeoutMs = 15_000L,
             ) ?: return
             if (!result.timedOut) {
@@ -1476,8 +1599,8 @@ class ProcessManager(
                     return@withContext false
                 }
 
-                val command = "export NODE_OPTIONS='--require /root/.openclaw-patch.js' && (" +
-                    "openclaw pairing approve '${escapeSingleQuotedShell(normalizedChannel)}' '${escapeSingleQuotedShell(normalizedCode)}' 2>&1 " +
+                val command = "export NODE_OPTIONS='--require /root/.openclaw-patch.js' && " +
+                    "(openclaw pairing approve '${escapeSingleQuotedShell(normalizedChannel)}' '${escapeSingleQuotedShell(normalizedCode)}' 2>&1 " +
                     "|| openclaw pairing approve --channel '${escapeSingleQuotedShell(normalizedChannel)}' --code '${escapeSingleQuotedShell(normalizedCode)}' 2>&1)"
                 val result = prootManager.executeWithResult(
                     command = command,
@@ -1599,6 +1722,12 @@ class ProcessManager(
             put("GEMINI_API_KEY", "__andclaw_env_placeholder__")
             put("BRAVE_API_KEY", resolved(lastBraveSearchApiKey))
             put("BRAVE_SEARCH_API_KEY", resolved(lastBraveSearchApiKey))
+            if (lastMemorySearchEnabled &&
+                supportsMemorySearchRemoteApiKey(lastMemorySearchProvider) &&
+                lastMemorySearchApiKey.isNotBlank()
+            ) {
+                put("MEMORY_SEARCH_API_KEY", lastMemorySearchApiKey)
+            }
             put("TELEGRAM_BOT_TOKEN", resolved(lastChannelConfig.telegramBotToken))
             put("DISCORD_BOT_TOKEN", resolved(lastChannelConfig.discordBotToken))
 

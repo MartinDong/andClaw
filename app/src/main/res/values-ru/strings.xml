@@ -132,6 +132,19 @@
     <string name="settings_brave_search_desc">Включает веб-поиск для ИИ-агента. Необязательно — оставьте пустым для отключения.</string>
     <string name="settings_brave_search_optional">Не настроено (необязательно)</string>
     <string name="settings_brave_search_get_key">Получить API-ключ Brave Search →</string>
+    <string name="settings_memory_search_title">Поиск по памяти</string>
+    <string name="settings_memory_search_desc">Использовать семантический поиск по MEMORY.md и файлам memory.</string>
+    <string name="settings_memory_search_provider">Провайдер памяти</string>
+    <string name="settings_memory_search_provider_dialog_title">Провайдер поиска по памяти</string>
+    <string name="settings_memory_search_provider_auto">Авто (рекомендуется)</string>
+    <string name="settings_memory_search_provider_openai">OpenAI</string>
+    <string name="settings_memory_search_provider_gemini">Gemini</string>
+    <string name="settings_memory_search_provider_voyage">Voyage</string>
+    <string name="settings_memory_search_provider_mistral">Mistral</string>
+    <string name="settings_memory_search_provider_local">Локальный</string>
+    <string name="settings_memory_search_api_key">API-ключ поиска по памяти</string>
+    <string name="settings_memory_search_api_key_desc">Необязательный ключ для эмбеддингов памяти. Оставьте пустым, чтобы использовать стандартные учетные данные провайдера.</string>
+    <string name="settings_memory_search_api_key_optional">Не настроено (опционально)</string>
     <string name="settings_openclaw_doctor_fix">OpenClaw Doctor (Fix)</string>
     <string name="settings_openclaw_doctor_fix_run">Запустить `openclaw doctor --fix`</string>
     <string name="settings_openclaw_doctor_fix_running">Выполняется…</string>
@@ -168,6 +181,7 @@
     <string name="whatsapp_connected">Подключено!</string>
     <string name="whatsapp_connect_error">Ошибка подключения: %1$s</string>
     <string name="whatsapp_qr_share">Поделиться</string>
+    <string name="whatsapp_qr_scan_done">Сканирование завершено</string>
 
     <!-- Pairing Notification -->
     <string name="pairing_notification_channel">Запросы сопряжения</string>

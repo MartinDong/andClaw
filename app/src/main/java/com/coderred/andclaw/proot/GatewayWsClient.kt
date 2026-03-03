@@ -6,6 +6,8 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
@@ -36,7 +38,18 @@ class GatewayWsClient(private val prootManager: ProotManager) {
         private const val TAG = "GatewayWsClient"
         private const val MAX_CLI_OUTPUT_CHARS = 1_000_000
         private val METHOD_NAME_REGEX = Regex("^[A-Za-z0-9_.-]+$")
+        private val GATEWAY_STATUS_CALL_MUTEX = Mutex()
     }
+
+    data class WhatsAppChannelSnapshot(
+        val accountId: String?,
+        val configured: Boolean?,
+        val linked: Boolean?,
+        val running: Boolean?,
+        val connected: Boolean?,
+        val reconnectAttempts: Int?,
+        val lastError: String?,
+    )
 
     private val client = OkHttpClient.Builder()
         .readTimeout(0, TimeUnit.MILLISECONDS)
@@ -46,9 +59,16 @@ class GatewayWsClient(private val prootManager: ProotManager) {
     private val pendingRequests = ConcurrentHashMap<String, CompletableDeferred<JSONObject>>()
     @Volatile
     private var lastCallErrorMessage: String? = null
+    @Volatile
+    private var lastCallGatewayMessage: String? = null
 
     fun getLastCallErrorMessage(): String? {
         val msg = lastCallErrorMessage?.trim().orEmpty()
+        return msg.ifBlank { null }
+    }
+
+    fun getLastCallGatewayMessage(): String? {
+        val msg = lastCallGatewayMessage?.trim().orEmpty()
         return msg.ifBlank { null }
     }
 
@@ -167,6 +187,7 @@ class GatewayWsClient(private val prootManager: ProotManager) {
         timeoutMs: Long = 30_000L,
     ): JSONObject? {
         lastCallErrorMessage = null
+        lastCallGatewayMessage = null
         val socket = ws ?: run {
             lastCallErrorMessage = "WebSocket not connected"
             return null
@@ -200,9 +221,19 @@ class GatewayWsClient(private val prootManager: ProotManager) {
      * WhatsApp QR 로그인을 시작한다.
      * @return QR 데이터 URL (data:image/png;base64,... 또는 일반 문자열), 실패 시 null
      */
-    suspend fun startWhatsAppLogin(): String? {
-        val params = JSONObject()
-        val result = callViaGatewayCli("web.login.start", params, timeoutMs = 70_000L)
+    suspend fun startWhatsAppLogin(
+        force: Boolean = false,
+        timeoutMs: Long = 70_000L,
+    ): String? {
+        val params = JSONObject().apply {
+            if (force) put("force", true)
+            put("timeoutMs", timeoutMs)
+        }
+        val result = callViaGatewayCli(
+            "web.login.start",
+            params,
+            timeoutMs = timeoutMs + 10_000L,
+        )
 
         Log.d(TAG, "startWhatsAppLogin result: ${result?.toString()?.take(300)}")
         val qrDataUrl = extractQrDataUrl(result)
@@ -242,17 +273,202 @@ class GatewayWsClient(private val prootManager: ProotManager) {
         return message.contains("already linked", ignoreCase = true)
     }
 
+    fun isLastCallWhatsAppRestartRequired(): Boolean {
+        val message = lastCallErrorMessage ?: return false
+        return message.contains("status=515", ignoreCase = true) ||
+            message.contains("code 515", ignoreCase = true) ||
+            message.contains("restart required", ignoreCase = true) ||
+            message.contains("unknown stream errored", ignoreCase = true)
+    }
+
+    /**
+     * 이전 로그인 시도가 비정상 종료되며 registered=false 상태의 creds가 남아 있으면 정리한다.
+     * 이 상태는 재시도 시 515/401 루프를 유발할 수 있다.
+     *
+     * @return stale creds를 삭제했으면 true
+     */
+    fun purgeStaleWhatsAppCredsIfNeeded(force: Boolean = false): Boolean {
+        val rootfs = prootManager.rootfsDir ?: return false
+        val credsRoot = File(rootfs, "root/.openclaw/credentials/whatsapp")
+        val defaultCredsFile = File(credsRoot, "default/creds.json")
+        if (!defaultCredsFile.exists()) return false
+
+        val isRegistered = runCatching {
+            val json = JSONObject(defaultCredsFile.readText())
+            json.optBoolean("registered", true)
+        }.getOrDefault(true)
+        if (!force && isRegistered) return false
+
+        val deleted = runCatching {
+            credsRoot.deleteRecursively()
+        }.getOrDefault(false)
+
+        if (deleted) {
+            lastCallErrorMessage = if (force) {
+                "Purged WhatsApp credentials for fresh login"
+            } else {
+                "Purged stale unregistered WhatsApp credentials"
+            }
+        }
+        return deleted
+    }
+
     /**
      * WhatsApp 로그인 완료를 대기한다.
      * @return 연결 성공 여부
      */
-    suspend fun waitWhatsAppLogin(): Boolean {
-        val params = JSONObject().apply {
-            put("timeoutMs", 120_000)
+    suspend fun waitWhatsAppLogin(timeoutMs: Long = 120_000L): Boolean {
+        val result = callViaGatewayCli(
+            "web.login.wait",
+            JSONObject().apply { put("timeoutMs", timeoutMs) },
+            timeoutMs = timeoutMs + 10_000L,
+        )
+        if (result == null) {
+            val waitFailureMessage = lastCallErrorMessage
+            val connectedAfterNull = runCatching {
+                isWhatsAppChannelConnected(probe = false) == true
+            }.getOrDefault(false)
+            if (!connectedAfterNull && !waitFailureMessage.isNullOrBlank()) {
+                lastCallErrorMessage = waitFailureMessage
+            }
+            return connectedAfterNull
         }
-        val result = callViaGatewayCli("web.login.wait", params, timeoutMs = 130_000L)
 
-        return result != null
+        val gatewayMessage = extractGatewayMessage(result)
+        lastCallGatewayMessage = gatewayMessage
+        val connected = parseWebLoginWaitConnected(result) ?: false
+        if (connected) return true
+        if (isDefinitiveWebLoginWaitSuccessMessage(gatewayMessage)) {
+            val connectedAfterSuccessMessage = runCatching {
+                isWhatsAppChannelConnected(probe = false) == true
+            }.getOrDefault(false)
+            if (connectedAfterSuccessMessage) return true
+        }
+        if (!connected) {
+            if (isImmediateWebLoginWaitFailureMessage(gatewayMessage)) {
+                lastCallErrorMessage = gatewayMessage ?: "WhatsApp login not completed"
+                return false
+            }
+            val connectedAfterFailure = runCatching {
+                isWhatsAppChannelConnected(probe = false) == true
+            }.getOrDefault(false)
+            if (connectedAfterFailure) {
+                return true
+            }
+            lastCallErrorMessage = gatewayMessage ?: "WhatsApp login not completed"
+        }
+        return connected
+    }
+
+    suspend fun ensureWhatsAppLoginIsolation(): Boolean {
+        val snapshot = getWhatsAppChannelSnapshot(probe = false) ?: return false
+        val error = snapshot.lastError?.trim()?.lowercase().orEmpty()
+        val hasAuthFailureSignal =
+            error.contains("connection failure") ||
+                error.contains("unauthorized") ||
+                error.contains("status=401") ||
+                error.contains("not linked") ||
+                error.contains("conflict")
+        val isFlapping =
+            snapshot.running == true &&
+                snapshot.connected == false &&
+                (hasAuthFailureSignal || (snapshot.linked == true && (snapshot.reconnectAttempts ?: 0) > 0))
+        if (!isFlapping) return false
+        val targetAccountId = snapshot.accountId?.takeIf { it.isNotBlank() } ?: "default"
+        return logoutChannel("whatsapp", accountId = targetAccountId)
+    }
+
+    suspend fun getWhatsAppChannelSnapshot(
+        probe: Boolean = true,
+        statusTimeoutMs: Long? = null,
+    ): WhatsAppChannelSnapshot? {
+        val normalizedTimeoutMs = (statusTimeoutMs ?: if (probe) 10_000L else 5_000L)
+            .coerceIn(1_000L, 20_000L)
+        val params = JSONObject().apply {
+            put("probe", probe)
+            put("timeoutMs", normalizedTimeoutMs)
+        }
+        val callTimeoutMs = (normalizedTimeoutMs + 5_000L).coerceAtMost(25_000L)
+        val result = callViaGatewayCli("channels.status", params, timeoutMs = callTimeoutMs)
+            ?: return null
+        return parseWhatsAppChannelSnapshot(result)
+    }
+
+    suspend fun isWhatsAppLikelyUnlinkedState(probe: Boolean = true): Boolean {
+        val snapshot = getWhatsAppChannelSnapshot(probe) ?: return false
+        val error = snapshot.lastError?.trim()?.lowercase().orEmpty()
+        return snapshot.connected == false &&
+            snapshot.running == false &&
+            (
+                error.contains("not linked") ||
+                    error.contains("connection failure") ||
+                    error.contains("unauthorized") ||
+                    error.contains("status=401") ||
+                    error.contains("401")
+                )
+    }
+
+    suspend fun isWhatsAppChannelConnected(
+        probe: Boolean = true,
+        statusTimeoutMs: Long? = null,
+    ): Boolean? {
+        val snapshot = getWhatsAppChannelSnapshot(probe, statusTimeoutMs) ?: return null
+
+        snapshot.connected?.let { return it }
+
+        // Conservative fallback: require linked=true and running=true together.
+        if (snapshot.linked != null) {
+            val linked = snapshot.linked
+            if (linked == false) return false
+            val running = snapshot.running ?: false
+            return linked == true && running
+        }
+        return null
+    }
+
+    private fun parseWhatsAppChannelSnapshot(result: JSONObject): WhatsAppChannelSnapshot? {
+        val channelAccounts = result.optJSONObject("channelAccounts") ?: return null
+        val whatsappAccounts = channelAccounts.optJSONArray("whatsapp") ?: return null
+        if (whatsappAccounts.length() == 0) {
+            return WhatsAppChannelSnapshot(
+                accountId = null,
+                configured = false,
+                linked = false,
+                running = false,
+                connected = false,
+                reconnectAttempts = 0,
+                lastError = "not linked",
+            )
+        }
+
+        val defaultAccountId = result.optJSONObject("channelDefaultAccountId")
+            ?.optString("whatsapp")
+            ?.takeIf { it.isNotBlank() }
+        val snapshot = if (defaultAccountId != null) {
+            (0 until whatsappAccounts.length())
+                .mapNotNull { index -> whatsappAccounts.optJSONObject(index) }
+                .firstOrNull { it.optString("accountId") == defaultAccountId }
+                ?: whatsappAccounts.optJSONObject(0)
+        } else {
+            whatsappAccounts.optJSONObject(0)
+        } ?: return null
+
+        val connected = if (snapshot.has("connected")) snapshot.optBoolean("connected", false) else null
+        val linked = if (snapshot.has("linked")) snapshot.optBoolean("linked", false) else null
+        val running = if (snapshot.has("running")) snapshot.optBoolean("running", false) else null
+        val configured = if (snapshot.has("configured")) snapshot.optBoolean("configured", false) else null
+        val reconnectAttempts = if (snapshot.has("reconnectAttempts")) snapshot.optInt("reconnectAttempts", 0) else null
+        val lastError = snapshot.optString("lastError").trim().ifBlank { null }
+
+        return WhatsAppChannelSnapshot(
+            accountId = snapshot.optString("accountId").ifBlank { defaultAccountId },
+            configured = configured,
+            linked = linked,
+            running = running,
+            connected = connected,
+            reconnectAttempts = reconnectAttempts,
+            lastError = lastError,
+        )
     }
 
     /**
@@ -295,87 +511,132 @@ class GatewayWsClient(private val prootManager: ProotManager) {
         timeoutMs: Long,
     ): JSONObject? {
         lastCallErrorMessage = null
+        lastCallGatewayMessage = null
         val safeMethod = method.takeIf { METHOD_NAME_REGEX.matches(it) } ?: run {
             lastCallErrorMessage = "Invalid RPC method: $method"
             return null
         }
-        if (!ensureNodeCompatPatchFile()) {
-            lastCallErrorMessage = "Missing runtime patch file: /root/.openclaw-patch.js"
-            return null
-        }
-        val paramsArg = escapeSingleQuotedShell(params.toString())
-        val token = getAuthToken()
-        val tokenArg = token.takeIf { it.isNotBlank() }?.let { " --token '${escapeSingleQuotedShell(it)}'" } ?: ""
-        val profileBootstrap = buildCliProfileBootstrap()
-        val envBootstrap = buildGatewayCliEnvBootstrap(readConfigEnvVarNames())
-        val cliBootstrap =
-            "OPENCLAW_BIN=\"\"; " +
-                "if [ -x /usr/local/bin/openclaw ]; then OPENCLAW_BIN=/usr/local/bin/openclaw; " +
-                "elif command -v openclaw >/dev/null 2>&1; then OPENCLAW_BIN=\"$(command -v openclaw)\"; " +
-                "else echo '{\"ok\":false,\"error\":{\"message\":\"openclaw binary not found\"}}'; exit 127; fi;"
-        val attempts = listOf(
-            // Local gateway fixed target (config/remote mode independent) with profile bootstrap.
-            "$profileBootstrap $envBootstrap $cliBootstrap \"\$OPENCLAW_BIN\" gateway call $safeMethod --url ws://127.0.0.1:18789$tokenArg --timeout $timeoutMs --params '$paramsArg' --json",
-            // Loopback hostname variant with profile bootstrap.
-            "$profileBootstrap $envBootstrap $cliBootstrap \"\$OPENCLAW_BIN\" gateway call $safeMethod --url ws://localhost:18789$tokenArg --timeout $timeoutMs --params '$paramsArg' --json",
-            // Fallback without profile bootstrap for environments where profile scripts are broken.
-            "$envBootstrap $cliBootstrap \"\$OPENCLAW_BIN\" gateway call $safeMethod --url ws://127.0.0.1:18789$tokenArg --timeout $timeoutMs --params '$paramsArg' --json",
-            // Loopback fallback without profile bootstrap.
-            "$envBootstrap $cliBootstrap \"\$OPENCLAW_BIN\" gateway call $safeMethod --url ws://localhost:18789$tokenArg --timeout $timeoutMs --params '$paramsArg' --json",
-        )
 
-        var lastFailureMessage: String? = null
-        for ((index, command) in attempts.withIndex()) {
-            val result = executeWithResultCancellable(command, timeoutMs = timeoutMs + 10_000L)
-            if (result == null) {
-                lastFailureMessage = "CLI call failed to execute"
-                Log.w(TAG, "callViaGatewayCli($safeMethod): attempt=${index + 1} executeWithResult returned null")
-                continue
+        val executeCall: suspend () -> JSONObject? = call@{
+            lastCallErrorMessage = null
+            lastCallGatewayMessage = null
+            if (!ensureNodeCompatPatchFile()) {
+                lastCallErrorMessage = "Missing runtime patch file: /root/.openclaw-patch.js"
+                return@call null
             }
-            if (result.timedOut) {
-                lastFailureMessage = "CLI call timed out"
-                Log.w(TAG, "callViaGatewayCli($safeMethod): attempt=${index + 1} timed out")
-                continue
-            }
+            val paramsArg = escapeSingleQuotedShell(params.toString())
+            val token = getAuthToken()
+            val tokenArg = token.takeIf { it.isNotBlank() }?.let { " --token '${escapeSingleQuotedShell(it)}'" } ?: ""
+            val profileBootstrap = buildCliProfileBootstrap()
+            val envBootstrap = buildGatewayCliEnvBootstrap(readConfigEnvVarNames())
+            val cliBootstrap =
+                "OPENCLAW_BIN=\"\"; " +
+                    "if [ -x /usr/local/bin/openclaw ]; then OPENCLAW_BIN=/usr/local/bin/openclaw; " +
+                    "elif command -v openclaw >/dev/null 2>&1; then OPENCLAW_BIN=\"$(command -v openclaw)\"; " +
+                    "else echo '{\"ok\":false,\"error\":{\"message\":\"openclaw binary not found\"}}'; exit 127; fi;"
+            val attempts = listOf(
+                // Fallback without profile bootstrap for environments where profile scripts are broken.
+                "$envBootstrap $cliBootstrap \"\$OPENCLAW_BIN\" gateway call $safeMethod --url ws://127.0.0.1:18789$tokenArg --timeout $timeoutMs --params '$paramsArg' --json",
+                // Loopback fallback without profile bootstrap.
+                "$envBootstrap $cliBootstrap \"\$OPENCLAW_BIN\" gateway call $safeMethod --url ws://localhost:18789$tokenArg --timeout $timeoutMs --params '$paramsArg' --json",
+                // Last-resort with profile bootstrap.
+                "$profileBootstrap $envBootstrap $cliBootstrap \"\$OPENCLAW_BIN\" gateway call $safeMethod --url ws://127.0.0.1:18789$tokenArg --timeout $timeoutMs --params '$paramsArg' --json",
+            )
 
-            val output = result.output.trim()
-            if (result.exitCode != 0) {
-                val reason = extractCliFailureReason(output)
-                lastFailureMessage = reason ?: if (result.exitCode == 127) {
-                    "openclaw binary not found"
-                } else {
-                    "CLI call failed (exit=${result.exitCode})"
+            var lastFailureMessage: String? = null
+            for ((index, command) in attempts.withIndex()) {
+                val result = executeWithResultCancellable(command, timeoutMs = timeoutMs + 10_000L)
+                if (result == null) {
+                    lastFailureMessage = "CLI call failed to execute"
+                    Log.w(TAG, "callViaGatewayCli($safeMethod): attempt=${index + 1} executeWithResult returned null")
+                    continue
                 }
-                Log.w(
-                    TAG,
-                    "callViaGatewayCli($safeMethod): attempt=${index + 1} failed exitCode=${result.exitCode}, output=${output.take(300)}",
-                )
-                continue
+                if (result.timedOut) {
+                    lastFailureMessage = "CLI call timed out"
+                    Log.w(TAG, "callViaGatewayCli($safeMethod): attempt=${index + 1} timed out")
+                    continue
+                }
+
+                val output = result.output.trim()
+                if (result.exitCode != 0) {
+                    // 일부 환경에서는 gateway가 JSON payload를 정상 출력한 뒤에도
+                    // 래퍼 프로세스가 SIGKILL(137)로 종료될 수 있다.
+                    // 이 경우 payload를 버리고 재시도하면 복구 반응이 늦어진다.
+                    val parsedOnNonZeroExit = parseJsonObjectFromOutput(output)
+                    if (parsedOnNonZeroExit != null) {
+                        val unwrappedOnNonZeroExit = unwrapGatewayCliResponseOnNonZeroExit(parsedOnNonZeroExit)
+                        if (unwrappedOnNonZeroExit != null) {
+                            Log.w(
+                                TAG,
+                                "callViaGatewayCli($safeMethod): attempt=${index + 1} exitCode=${result.exitCode} with successful envelope payload; accepting response",
+                            )
+                            return@call unwrappedOnNonZeroExit
+                        }
+                        lastFailureMessage = getLastCallErrorMessage() ?: extractCliFailureReason(output)
+                        if (shouldAbortCliRetry(safeMethod, lastFailureMessage)) {
+                            lastCallErrorMessage = lastFailureMessage ?: "Gateway CLI returned error"
+                            return@call null
+                        }
+                    }
+
+                    val reason = extractCliFailureReason(output)
+                    lastFailureMessage = reason ?: if (result.exitCode == 127) {
+                        "openclaw binary not found"
+                    } else {
+                        "CLI call failed (exit=${result.exitCode})"
+                    }
+                    Log.w(
+                        TAG,
+                        "callViaGatewayCli($safeMethod): attempt=${index + 1} failed exitCode=${result.exitCode}, output=${output.take(300)}",
+                    )
+                    if (shouldAbortCliRetry(safeMethod, lastFailureMessage)) {
+                        lastCallErrorMessage = lastFailureMessage
+                        return@call null
+                    }
+                    continue
+                }
+
+                if (output.isBlank()) {
+                    lastFailureMessage = "CLI call returned empty output"
+                    Log.w(TAG, "callViaGatewayCli($safeMethod): attempt=${index + 1} empty output")
+                    continue
+                }
+
+                val parsed = parseJsonObjectFromOutput(output)
+                if (parsed == null) {
+                    lastFailureMessage = "Failed to parse CLI JSON response"
+                    Log.w(TAG, "callViaGatewayCli($safeMethod): attempt=${index + 1} JSON parse failed, output=${output.take(300)}")
+                    continue
+                }
+
+                val unwrapped = unwrapGatewayCliResponse(parsed)
+                if (unwrapped == null) {
+                    lastFailureMessage = getLastCallErrorMessage() ?: "Gateway CLI returned error"
+                    if (shouldAbortCliRetry(safeMethod, lastFailureMessage)) {
+                        lastCallErrorMessage = lastFailureMessage
+                        return@call null
+                    }
+                    continue
+                }
+                return@call unwrapped
             }
 
-            if (output.isBlank()) {
-                lastFailureMessage = "CLI call returned empty output"
-                Log.w(TAG, "callViaGatewayCli($safeMethod): attempt=${index + 1} empty output")
-                continue
-            }
-
-            val parsed = parseJsonObjectFromOutput(output)
-            if (parsed == null) {
-                lastFailureMessage = "Failed to parse CLI JSON response"
-                Log.w(TAG, "callViaGatewayCli($safeMethod): attempt=${index + 1} JSON parse failed, output=${output.take(300)}")
-                continue
-            }
-
-            val unwrapped = unwrapGatewayCliResponse(parsed)
-            if (unwrapped == null) {
-                lastFailureMessage = getLastCallErrorMessage() ?: "Gateway CLI returned error"
-                continue
-            }
-            return unwrapped
+            lastCallErrorMessage = lastFailureMessage ?: "CLI call failed"
+            return@call null
         }
 
-        lastCallErrorMessage = lastFailureMessage ?: "CLI call failed"
-        return null
+        if (safeMethod == "channels.status") {
+            val lockRequestedAt = System.currentTimeMillis()
+            return GATEWAY_STATUS_CALL_MUTEX.withLock {
+                val waitedMs = System.currentTimeMillis() - lockRequestedAt
+                if (waitedMs > 200L) {
+                    Log.i(TAG, "callViaGatewayCli(channels.status): waited ${waitedMs}ms for status lock")
+                }
+                executeCall()
+            }
+        }
+
+        return executeCall()
     }
 
     /**
@@ -469,7 +730,10 @@ class GatewayWsClient(private val prootManager: ProotManager) {
     }
 
     private fun buildCliProfileBootstrap(): String {
-        return "for f in /etc/profile /root/.profile /root/.bash_profile /root/.bashrc; do if [ -f \"\$f\" ] && /bin/sh -n \"\$f\" >/dev/null 2>&1; then . \"\$f\"; fi; done;"
+        // bash 전용 rc(.bashrc/.bash_profile)는 /bin/sh에서 `shopt` 등으로 실패해
+        // QR 로그인 RPC 초기 시도를 불필요하게 지연시킬 수 있다.
+        // CLI 호출에는 POSIX profile만 로드한다.
+        return "for f in /etc/profile /root/.profile; do if [ -f \"\$f\" ] && /bin/sh -n \"\$f\" >/dev/null 2>&1; then . \"\$f\" || true; fi; done;"
     }
 
     private fun ensureNodeCompatPatchFile(): Boolean {
@@ -637,9 +901,23 @@ class GatewayWsClient(private val prootManager: ProotManager) {
             json.has("qr_data_url")
     }
 
-    private fun unwrapGatewayCliResponse(raw: JSONObject): JSONObject? {
+    internal fun unwrapGatewayCliResponseOnNonZeroExit(raw: JSONObject): JSONObject? {
+        return unwrapGatewayCliResponse(raw, allowRawPayload = false)
+    }
+
+    private fun unwrapGatewayCliResponse(
+        raw: JSONObject,
+        allowRawPayload: Boolean = true,
+    ): JSONObject? {
         val looksEnvelope = raw.has("ok") && (raw.has("payload") || raw.has("error") || raw.has("id"))
-        if (!looksEnvelope) return raw
+        if (!looksEnvelope) {
+            if (allowRawPayload) return raw
+            val message = findGatewayMessage(raw)
+            if (!message.isNullOrBlank()) {
+                lastCallErrorMessage = message
+            }
+            return null
+        }
 
         val ok = raw.optBoolean("ok", false)
         if (!ok) {
@@ -679,6 +957,43 @@ class GatewayWsClient(private val prootManager: ProotManager) {
     private fun extractGatewayMessage(result: JSONObject?): String? {
         if (result == null) return null
         return findGatewayMessage(result)
+    }
+
+    internal fun parseWebLoginWaitConnected(result: JSONObject): Boolean? {
+        if (!result.has("connected")) return null
+        return result.optBoolean("connected", false)
+    }
+
+    internal fun isLikelyLinkedGatewayMessage(message: String?): Boolean {
+        val normalized = message?.trim()?.lowercase().orEmpty()
+        if (normalized.isBlank()) return false
+        if (normalized.contains("not linked")) return false
+        return normalized.contains("linked")
+    }
+
+    private fun shouldAbortCliRetry(method: String, failureMessage: String?): Boolean {
+        val normalizedMethod = method.trim().lowercase()
+        if (normalizedMethod != "web.login.wait") return false
+        return isImmediateWebLoginWaitFailureMessage(failureMessage)
+    }
+
+    private fun isImmediateWebLoginWaitFailureMessage(message: String?): Boolean {
+        val normalized = message?.trim()?.lowercase().orEmpty()
+        if (normalized.isBlank()) return false
+        return normalized.contains("status=515") ||
+            normalized.contains("code 515") ||
+            normalized.contains("restart required") ||
+            normalized.contains("unknown stream errored") ||
+            normalized.contains("no active whatsapp login in progress")
+    }
+
+    private fun isDefinitiveWebLoginWaitSuccessMessage(message: String?): Boolean {
+        val normalized = message?.trim()?.lowercase().orEmpty()
+        if (normalized.isBlank()) return false
+        return normalized.contains("web session ready") ||
+            normalized.contains("linked after restart") ||
+            normalized.contains("already linked") ||
+            normalized.contains("login complete")
     }
 
     private fun findGatewayMessage(node: JSONObject): String? {

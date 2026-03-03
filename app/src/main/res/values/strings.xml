@@ -159,6 +159,19 @@
     <string name="settings_brave_search_desc">Enables web search for AI agent. Optional — leave empty to disable.</string>
     <string name="settings_brave_search_optional">Not configured (optional)</string>
     <string name="settings_brave_search_get_key">Get Brave Search API key →</string>
+    <string name="settings_memory_search_title">Memory Search</string>
+    <string name="settings_memory_search_desc">Use semantic memory retrieval for MEMORY.md and memory files.</string>
+    <string name="settings_memory_search_provider">Memory provider</string>
+    <string name="settings_memory_search_provider_dialog_title">Memory Search Provider</string>
+    <string name="settings_memory_search_provider_auto">Auto (recommended)</string>
+    <string name="settings_memory_search_provider_openai">OpenAI</string>
+    <string name="settings_memory_search_provider_gemini">Gemini</string>
+    <string name="settings_memory_search_provider_voyage">Voyage</string>
+    <string name="settings_memory_search_provider_mistral">Mistral</string>
+    <string name="settings_memory_search_provider_local">Local</string>
+    <string name="settings_memory_search_api_key">Memory Search API Key</string>
+    <string name="settings_memory_search_api_key_desc">Optional override key for memory embeddings. Leave empty to use provider default credentials.</string>
+    <string name="settings_memory_search_api_key_optional">Not configured (optional)</string>
     <string name="settings_openclaw_doctor_fix">OpenClaw Doctor (Fix)</string>
     <string name="settings_openclaw_doctor_fix_run">Run `openclaw doctor --fix`</string>
     <string name="settings_openclaw_doctor_fix_running">Running…</string>
@@ -201,6 +214,7 @@
     <string name="whatsapp_connected">Connected!</string>
     <string name="whatsapp_connect_error">Connection failed: %1$s</string>
     <string name="whatsapp_qr_share">Share</string>
+    <string name="whatsapp_qr_scan_done">Scan done</string>
 
     <!-- Pairing Notification -->
     <string name="pairing_notification_channel">Pairing Requests</string>

@@ -12,6 +12,7 @@ import com.coderred.andclaw.AndClawApp
 import com.coderred.andclaw.R
 import com.coderred.andclaw.data.ChannelConfig
 import com.coderred.andclaw.data.GatewayState
+import com.coderred.andclaw.data.GatewayStatus
 import com.coderred.andclaw.data.PairingRequest
 import com.coderred.andclaw.data.SetupState
 import com.coderred.andclaw.data.SessionLogEntry
@@ -21,6 +22,7 @@ import com.coderred.andclaw.data.parseOpenRouterModels
 import com.coderred.andclaw.proot.BundleUpdateFailureState
 import com.coderred.andclaw.proot.BundleUpdateOutcome
 import com.coderred.andclaw.proot.GatewayWsClient
+import com.coderred.andclaw.proot.WhatsAppLoginCoordinator
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -33,10 +35,20 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import java.net.HttpURLConnection
 import java.net.URL
 
 class DashboardViewModel(application: Application) : AndroidViewModel(application) {
+    companion object {
+        private const val WHATSAPP_QR_EXPIRES_MS = 120_000L
+        private const val WHATSAPP_LOGIN_GUARD_TIMEOUT_MS = 4L * 60L * 1000L
+        private const val WHATSAPP_LOGIN_GUARD_REFRESH_INTERVAL_MS = 60_000L
+        private const val WHATSAPP_STABLE_CONNECTED_REQUIRED_COUNT = 4
+        private const val WHATSAPP_GATEWAY_RESTART_READY_TIMEOUT_MS = 20_000L
+        private const val WHATSAPP_GATEWAY_RESTART_RETRY_INTERVAL_MS = 250L
+    }
+
     private val app = application as AndClawApp
 
     val gatewayState: StateFlow<GatewayState> = app.processManager.gatewayState
@@ -115,7 +127,10 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
     private var wsClient: GatewayWsClient? = null
     private var whatsappQrJob: Job? = null
     private var restartJob: Job? = null
-    private var shouldRestartAfterWhatsAppPairing: Boolean = false
+    private var whatsappLoginGuardKeepAliveJob: Job? = null
+    private val whatsappLoginGuardLock = Any()
+    private var isWhatsAppLoginCoordinatorOwner: Boolean = false
+    private var isWhatsAppLoginGuardActive: Boolean = false
 
     init {
         viewModelScope.launch(Dispatchers.IO) {
@@ -196,6 +211,71 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
             val context = getApplication<Application>()
             GatewayService.restart(context, userInitiated = false)
         }
+    }
+
+    private suspend fun awaitWhatsAppConnectedWithGrace(
+        client: GatewayWsClient,
+        timeoutMs: Long = 18_000L,
+        intervalMs: Long = 1_500L,
+        requiredConnectedCount: Int = WHATSAPP_STABLE_CONNECTED_REQUIRED_COUNT,
+        probe: Boolean = true,
+    ): Boolean {
+        val deadline = System.currentTimeMillis() + timeoutMs
+        var consecutiveConnected = 0
+        while (System.currentTimeMillis() < deadline) {
+            val remainingMs = deadline - System.currentTimeMillis()
+            if (remainingMs <= 0L) break
+            val probeTimeoutMs = minOf(remainingMs, 4_000L)
+            val connected = withTimeoutOrNull(probeTimeoutMs) {
+                withContext(Dispatchers.IO) {
+                    client.isWhatsAppChannelConnected(
+                        probe = probe,
+                        statusTimeoutMs = probeTimeoutMs.coerceAtMost(5_000L),
+                    )
+                }
+            }
+            if (connected == true) {
+                consecutiveConnected += 1
+                if (consecutiveConnected >= requiredConnectedCount) return true
+            } else {
+                consecutiveConnected = 0
+            }
+            delay(intervalMs)
+        }
+        return false
+    }
+
+    private suspend fun waitForGatewayRestartReady(
+        timeoutMs: Long = WHATSAPP_GATEWAY_RESTART_READY_TIMEOUT_MS,
+        intervalMs: Long = WHATSAPP_GATEWAY_RESTART_RETRY_INTERVAL_MS,
+        requireTransition: Boolean = false,
+        previousPid: Int? = null,
+    ): Boolean {
+        val startedAt = System.currentTimeMillis()
+        val deadline = System.currentTimeMillis() + timeoutMs
+        var sawRestartTransition = !requireTransition
+        while (System.currentTimeMillis() < deadline) {
+            val state = app.processManager.gatewayState.value
+            val pidChanged = previousPid != null && state.pid != null && previousPid != state.pid
+            when (state.status) {
+                GatewayStatus.RUNNING -> {
+                    if (sawRestartTransition) return true
+                    if (!requireTransition) return true
+                    if (pidChanged) return true
+                    val elapsedMs = System.currentTimeMillis() - startedAt
+                    if (elapsedMs >= 3_000L) {
+                        // 상태 폴링 간격/StateFlow conflation으로 STOPPING/STARTING 전이를 놓칠 수 있다.
+                        // 그 경우에도 RUNNING이 충분히 지속되면 재시작 준비 완료로 간주한다.
+                        return true
+                    }
+                }
+                GatewayStatus.STARTING, GatewayStatus.STOPPED, GatewayStatus.STOPPING, GatewayStatus.ERROR -> {
+                    sawRestartTransition = true
+                }
+            }
+            delay(intervalMs)
+        }
+        return false
     }
 
     fun loadSessionLogs() {
@@ -284,28 +364,70 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
     // ── WhatsApp QR ──
 
     fun startWhatsAppQr() {
+        if (whatsappQrJob?.isActive == true) return
+        if (!WhatsAppLoginCoordinator.tryAcquire()) {
+            _whatsappQrState.value = WhatsAppQrState.Error(
+                "WhatsApp login is already running in another screen. Please wait."
+            )
+            return
+        }
+        isWhatsAppLoginCoordinatorOwner = true
         whatsappQrJob?.cancel()
-        shouldRestartAfterWhatsAppPairing = false
         _whatsappQrState.value = WhatsAppQrState.Loading
         whatsappQrJob = viewModelScope.launch {
+            val appContext = getApplication<Application>().applicationContext
             try {
-                val client = GatewayWsClient(app.prootManager)
+                var client = GatewayWsClient(app.prootManager)
                 wsClient = client
+                var qrAttempt = 0
 
-                val qrData = withContext(Dispatchers.IO) { client.startWhatsAppLogin() }
-                if (qrData == null) {
-                    val reason = client.getLastCallErrorMessage()
-                    if (client.isLastCallWhatsAppAlreadyLinked()) {
-                        shouldRestartAfterWhatsAppPairing = true
-                        _whatsappQrState.value = WhatsAppQrState.Connected
-                        delay(1500)
-                        _whatsappQrState.value = WhatsAppQrState.Idle
-                        restartGatewayIfRunning()
-                        shouldRestartAfterWhatsAppPairing = false
+                val wasWhatsAppProviderRunning = withContext(Dispatchers.IO) {
+                    client.getWhatsAppChannelSnapshot(probe = false)?.running == true
+                }
+                val purgedStaleCreds = withContext(Dispatchers.IO) {
+                    client.purgeStaleWhatsAppCredsIfNeeded()
+                }
+                if (purgedStaleCreds && wasWhatsAppProviderRunning) {
+                    val preRestartPid = app.processManager.gatewayState.value.pid
+                    restartGatewayIfRunning(delayMs = 0L)
+                    val restartReady = waitForGatewayRestartReady(
+                        requireTransition = true,
+                        previousPid = preRestartPid,
+                    )
+                    if (!restartReady) {
+                        _whatsappQrState.value = WhatsAppQrState.Error("Gateway restarting. Tap Connect again.")
                         client.close()
                         wsClient = null
                         return@launch
                     }
+                }
+
+                startWhatsAppLoginGuardKeepAlive(appContext)
+
+                val isolated = withContext(Dispatchers.IO) {
+                    client.ensureWhatsAppLoginIsolation()
+                }
+                if (isolated) {
+                    delay(500)
+                }
+
+                var qrData = withContext(Dispatchers.IO) { client.startWhatsAppLogin() }
+                if (qrData == null) {
+                    if (client.isLastCallWhatsAppAlreadyLinked()) {
+                        val connected = awaitWhatsAppConnectedWithGrace(client)
+                        if (connected) {
+                            _whatsappQrState.value = WhatsAppQrState.Connected
+                            delay(1500)
+                            _whatsappQrState.value = WhatsAppQrState.Idle
+                            client.close()
+                            wsClient = null
+                            return@launch
+                        }
+                        qrData = withContext(Dispatchers.IO) { client.startWhatsAppLogin(force = true) }
+                    }
+                }
+                if (qrData == null) {
+                    val reason = client.getLastCallErrorMessage()
                     val message = if (reason.isNullOrBlank()) {
                         "Failed to get QR code"
                     } else {
@@ -318,18 +440,45 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
                 }
 
                 val isDataUrl = qrData.startsWith("data:image/")
-                _whatsappQrState.value = WhatsAppQrState.QrReady(qrData, isDataUrl)
+                qrAttempt += 1
+                val issuedAtMs = System.currentTimeMillis()
+                _whatsappQrState.value = WhatsAppQrState.QrReady(
+                    qrData = qrData,
+                    isDataUrl = isDataUrl,
+                    attempt = qrAttempt,
+                    issuedAtMs = issuedAtMs,
+                    expiresAtMs = issuedAtMs + WHATSAPP_QR_EXPIRES_MS,
+                )
 
                 // 로그인 완료 대기
                 val success = withContext(Dispatchers.IO) { client.waitWhatsAppLogin() }
                 if (success) {
-                    shouldRestartAfterWhatsAppPairing = true
                     _whatsappQrState.value = WhatsAppQrState.Connected
                     delay(3000)
                     _whatsappQrState.value = WhatsAppQrState.Idle
-                    restartGatewayIfRunning()
-                    shouldRestartAfterWhatsAppPairing = false
                 } else {
+                    if (client.isLastCallWhatsAppRestartRequired()) {
+                        val connectedAfterGrace = awaitWhatsAppConnectedWithGrace(
+                            client = client,
+                            timeoutMs = 90_000L,
+                            intervalMs = 1_500L,
+                            requiredConnectedCount = 3,
+                            probe = false,
+                        )
+                        if (connectedAfterGrace) {
+                            _whatsappQrState.value = WhatsAppQrState.Connected
+                            delay(1500)
+                            _whatsappQrState.value = WhatsAppQrState.Idle
+                        } else {
+                            _whatsappQrState.value = WhatsAppQrState.Error(
+                                "Login verification timed out after scan (515). WhatsApp session did not finalize."
+                            )
+                        }
+                        client.close()
+                        wsClient = null
+                        return@launch
+                    }
+
                     val reason = client.getLastCallErrorMessage()
                     val message = if (reason.isNullOrBlank()) {
                         "Login timed out"
@@ -346,6 +495,8 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
                 _whatsappQrState.value = WhatsAppQrState.Error(e.message ?: "Unknown error")
                 wsClient?.close()
                 wsClient = null
+            } finally {
+                finishWhatsAppLoginSession()
             }
         }
     }
@@ -353,12 +504,54 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
     fun cancelWhatsAppQr() {
         whatsappQrJob?.cancel()
         whatsappQrJob = null
+        finishWhatsAppLoginSession()
+        _whatsappQrState.value = WhatsAppQrState.Idle
+    }
+
+    private fun finishWhatsAppLoginSession() {
         wsClient?.close()
         wsClient = null
-        _whatsappQrState.value = WhatsAppQrState.Idle
-        if (shouldRestartAfterWhatsAppPairing) {
-            restartGatewayIfRunning()
-            shouldRestartAfterWhatsAppPairing = false
+        whatsappLoginGuardKeepAliveJob?.cancel()
+        whatsappLoginGuardKeepAliveJob = null
+        synchronized(whatsappLoginGuardLock) {
+            if (isWhatsAppLoginCoordinatorOwner && isWhatsAppLoginGuardActive) {
+                GatewayService.stopWhatsAppLoginGuard()
+            }
+            isWhatsAppLoginGuardActive = false
+        }
+        if (isWhatsAppLoginCoordinatorOwner) {
+            WhatsAppLoginCoordinator.release()
+        }
+        isWhatsAppLoginCoordinatorOwner = false
+    }
+
+    private fun startWhatsAppLoginGuardKeepAlive(appContext: Context) {
+        synchronized(whatsappLoginGuardLock) {
+            GatewayService.startWhatsAppLoginGuard(
+                context = appContext,
+                timeoutMs = WHATSAPP_LOGIN_GUARD_TIMEOUT_MS,
+            )
+            isWhatsAppLoginGuardActive = true
+        }
+
+        whatsappLoginGuardKeepAliveJob?.cancel()
+        whatsappLoginGuardKeepAliveJob = viewModelScope.launch {
+            while (isActive) {
+                delay(WHATSAPP_LOGIN_GUARD_REFRESH_INTERVAL_MS)
+                if (!isActive) break
+                val refreshed = synchronized(whatsappLoginGuardLock) {
+                    if (!isWhatsAppLoginCoordinatorOwner || !isWhatsAppLoginGuardActive) {
+                        false
+                    } else {
+                        GatewayService.startWhatsAppLoginGuard(
+                            context = appContext,
+                            timeoutMs = WHATSAPP_LOGIN_GUARD_TIMEOUT_MS,
+                        )
+                        true
+                    }
+                }
+                if (!refreshed) break
+            }
         }
     }
 
@@ -469,7 +662,14 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
 sealed class WhatsAppQrState {
     data object Idle : WhatsAppQrState()
     data object Loading : WhatsAppQrState()
-    data class QrReady(val qrData: String, val isDataUrl: Boolean) : WhatsAppQrState()
+    data object Waiting : WhatsAppQrState()
+    data class QrReady(
+        val qrData: String,
+        val isDataUrl: Boolean,
+        val attempt: Int,
+        val issuedAtMs: Long,
+        val expiresAtMs: Long,
+    ) : WhatsAppQrState()
     data object Connected : WhatsAppQrState()
     data class Error(val message: String) : WhatsAppQrState()
 }

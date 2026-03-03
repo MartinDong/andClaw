@@ -132,6 +132,19 @@
     <string name="settings_brave_search_desc">AI ajanı için web aramasını etkinleştirir. İsteğe bağlı — devre dışı bırakmak için boş bırakın.</string>
     <string name="settings_brave_search_optional">Yapılandırılmadı (isteğe bağlı)</string>
     <string name="settings_brave_search_get_key">Brave Search API anahtarı al →</string>
+    <string name="settings_memory_search_title">Bellek araması</string>
+    <string name="settings_memory_search_desc">MEMORY.md ve memory dosyaları için anlamsal bellek getirmeyi kullan.</string>
+    <string name="settings_memory_search_provider">Bellek sağlayıcısı</string>
+    <string name="settings_memory_search_provider_dialog_title">Bellek araması sağlayıcısı</string>
+    <string name="settings_memory_search_provider_auto">Otomatik (önerilen)</string>
+    <string name="settings_memory_search_provider_openai">OpenAI</string>
+    <string name="settings_memory_search_provider_gemini">Gemini</string>
+    <string name="settings_memory_search_provider_voyage">Voyage</string>
+    <string name="settings_memory_search_provider_mistral">Mistral</string>
+    <string name="settings_memory_search_provider_local">Yerel</string>
+    <string name="settings_memory_search_api_key">Bellek araması API anahtarı</string>
+    <string name="settings_memory_search_api_key_desc">Bellek gömmeleri için isteğe bağlı anahtar. Sağlayıcının varsayılan kimlik bilgilerini kullanmak için boş bırak.</string>
+    <string name="settings_memory_search_api_key_optional">Yapılandırılmadı (isteğe bağlı)</string>
     <string name="settings_openclaw_doctor_fix">OpenClaw Doctor (Fix)</string>
     <string name="settings_openclaw_doctor_fix_run">`openclaw doctor --fix` komutunu çalıştır</string>
     <string name="settings_openclaw_doctor_fix_running">Çalışıyor…</string>
@@ -168,6 +181,7 @@
     <string name="whatsapp_connected">Bağlandı!</string>
     <string name="whatsapp_connect_error">Bağlantı başarısız: %1$s</string>
     <string name="whatsapp_qr_share">Paylaş</string>
+    <string name="whatsapp_qr_scan_done">Tarama tamamlandı</string>
 
     <!-- Pairing Notification -->
     <string name="pairing_notification_channel">Eşleştirme İstekleri</string>

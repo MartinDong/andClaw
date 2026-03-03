@@ -132,6 +132,19 @@
     <string name="settings_brave_search_desc">Kích hoạt tìm kiếm web cho tác nhân AI. Tùy chọn — để trống để tắt.</string>
     <string name="settings_brave_search_optional">Chưa cấu hình (tùy chọn)</string>
     <string name="settings_brave_search_get_key">Lấy khóa API Brave Search →</string>
+    <string name="settings_memory_search_title">Tìm kiếm bộ nhớ</string>
+    <string name="settings_memory_search_desc">Sử dụng truy hồi bộ nhớ ngữ nghĩa cho MEMORY.md và các tệp memory.</string>
+    <string name="settings_memory_search_provider">Nhà cung cấp bộ nhớ</string>
+    <string name="settings_memory_search_provider_dialog_title">Nhà cung cấp tìm kiếm bộ nhớ</string>
+    <string name="settings_memory_search_provider_auto">Tự động (khuyên dùng)</string>
+    <string name="settings_memory_search_provider_openai">OpenAI</string>
+    <string name="settings_memory_search_provider_gemini">Gemini</string>
+    <string name="settings_memory_search_provider_voyage">Voyage</string>
+    <string name="settings_memory_search_provider_mistral">Mistral</string>
+    <string name="settings_memory_search_provider_local">Cục bộ</string>
+    <string name="settings_memory_search_api_key">Khóa API tìm kiếm bộ nhớ</string>
+    <string name="settings_memory_search_api_key_desc">Khóa ghi đè tùy chọn cho embedding bộ nhớ. Để trống để dùng thông tin xác thực mặc định của nhà cung cấp.</string>
+    <string name="settings_memory_search_api_key_optional">Chưa cấu hình (tùy chọn)</string>
     <string name="settings_openclaw_doctor_fix">OpenClaw Doctor (Fix)</string>
     <string name="settings_openclaw_doctor_fix_run">Chạy `openclaw doctor --fix`</string>
     <string name="settings_openclaw_doctor_fix_running">Đang chạy…</string>
@@ -168,6 +181,7 @@
     <string name="whatsapp_connected">Đã kết nối!</string>
     <string name="whatsapp_connect_error">Kết nối thất bại: %1$s</string>
     <string name="whatsapp_qr_share">Chia sẻ</string>
+    <string name="whatsapp_qr_scan_done">Đã quét xong</string>
 
     <!-- Pairing Notification -->
     <string name="pairing_notification_channel">Yêu cầu ghép nối</string>

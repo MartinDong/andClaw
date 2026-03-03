@@ -4,6 +4,7 @@ import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Color
+import android.text.format.DateFormat
 import android.util.Base64
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Box
@@ -25,6 +26,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -41,6 +44,8 @@ import com.google.zxing.EncodeHintType
 import com.google.zxing.qrcode.QRCodeWriter
 import java.io.File
 import java.io.FileOutputStream
+import java.util.Date
+import kotlinx.coroutines.delay
 
 @Composable
 fun WhatsAppQrDialog(
@@ -50,7 +55,9 @@ fun WhatsAppQrDialog(
     val context = LocalContext.current
 
     AlertDialog(
-        onDismissRequest = onDismiss,
+        // 바깥 터치/뒤로가기로 닫히지 않게 고정한다.
+        // 닫기는 하단 Close 버튼으로만 허용한다.
+        onDismissRequest = {},
         shape = RoundedCornerShape(24.dp),
         title = { Text(stringResource(R.string.dashboard_whatsapp_qr_title)) },
         text = {
@@ -69,6 +76,20 @@ fun WhatsAppQrDialog(
                         Spacer(modifier = Modifier.height(12.dp))
                         Text(
                             text = stringResource(R.string.whatsapp_qr_loading),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    is WhatsAppQrState.Waiting -> {
+                        Box(
+                            modifier = Modifier.size(256.dp),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            CircularProgressIndicator()
+                        }
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Text(
+                            text = stringResource(R.string.welcome_connecting),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -99,6 +120,8 @@ fun WhatsAppQrDialog(
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        QrMetadataText(state = state)
                     }
                     is WhatsAppQrState.Connected -> {
                         Box(
@@ -136,7 +159,7 @@ fun WhatsAppQrDialog(
             }
         },
         confirmButton = {
-            Row {
+            Row(verticalAlignment = Alignment.CenterVertically) {
                 if (state is WhatsAppQrState.QrReady) {
                     TextButton(
                         onClick = {
@@ -166,6 +189,39 @@ fun WhatsAppQrDialog(
             }
         },
     )
+}
+
+@Composable
+private fun QrMetadataText(state: WhatsAppQrState.QrReady) {
+    val context = LocalContext.current
+    val issuedAtText = remember(state.issuedAtMs) {
+        DateFormat.getTimeFormat(context).format(Date(state.issuedAtMs))
+    }
+    val nowMs by produceState(
+        initialValue = System.currentTimeMillis(),
+        key1 = state.issuedAtMs,
+        key2 = state.expiresAtMs,
+    ) {
+        while (true) {
+            value = System.currentTimeMillis()
+            delay(1000)
+        }
+    }
+    val remainingMs = (state.expiresAtMs - nowMs).coerceAtLeast(0L)
+    val remainingText = remember(remainingMs) { formatRemainingMmSs(remainingMs) }
+
+    Text(
+        text = "#${state.attempt}  ·  $issuedAtText  ·  ⏳$remainingText",
+        style = MaterialTheme.typography.labelSmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+}
+
+private fun formatRemainingMmSs(millis: Long): String {
+    val totalSeconds = millis / 1000
+    val minutes = totalSeconds / 60
+    val seconds = totalSeconds % 60
+    return String.format("%02d:%02d", minutes, seconds)
 }
 
 private fun shareQrBitmap(context: android.content.Context, bitmap: Bitmap) {

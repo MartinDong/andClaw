@@ -132,6 +132,19 @@
     <string name="settings_brave_search_desc">AI एजेंट के लिए वेब सर्च सक्षम करता है। वैकल्पिक — अक्षम करने के लिए खाली छोड़ें।</string>
     <string name="settings_brave_search_optional">कॉन्फ़िगर नहीं (वैकल्पिक)</string>
     <string name="settings_brave_search_get_key">Brave Search API कुंजी प्राप्त करें →</string>
+    <string name="settings_memory_search_title">मेमोरी सर्च</string>
+    <string name="settings_memory_search_desc">MEMORY.md और memory फ़ाइलों के लिए सेमान्टिक मेमोरी रिट्रीवल का उपयोग करें।</string>
+    <string name="settings_memory_search_provider">मेमोरी प्रोवाइडर</string>
+    <string name="settings_memory_search_provider_dialog_title">मेमोरी सर्च प्रोवाइडर</string>
+    <string name="settings_memory_search_provider_auto">ऑटो (सुझावित)</string>
+    <string name="settings_memory_search_provider_openai">OpenAI</string>
+    <string name="settings_memory_search_provider_gemini">Gemini</string>
+    <string name="settings_memory_search_provider_voyage">Voyage</string>
+    <string name="settings_memory_search_provider_mistral">Mistral</string>
+    <string name="settings_memory_search_provider_local">लोकल</string>
+    <string name="settings_memory_search_api_key">मेमोरी सर्च API कुंजी</string>
+    <string name="settings_memory_search_api_key_desc">मेमोरी एम्बेडिंग के लिए वैकल्पिक ओवरराइड कुंजी। प्रोवाइडर की डिफ़ॉल्ट क्रेडेंशियल्स इस्तेमाल करने के लिए खाली छोड़ें।</string>
+    <string name="settings_memory_search_api_key_optional">कॉन्फ़िगर नहीं (वैकल्पिक)</string>
     <string name="settings_openclaw_doctor_fix">OpenClaw Doctor (Fix)</string>
     <string name="settings_openclaw_doctor_fix_run">`openclaw doctor --fix` चलाएँ</string>
     <string name="settings_openclaw_doctor_fix_running">चल रहा है…</string>
@@ -168,6 +181,7 @@
     <string name="whatsapp_connected">कनेक्ट हो गया!</string>
     <string name="whatsapp_connect_error">कनेक्शन विफल: %1$s</string>
     <string name="whatsapp_qr_share">शेयर करें</string>
+    <string name="whatsapp_qr_scan_done">स्कैन पूरा</string>
 
     <!-- Pairing Notification -->
     <string name="pairing_notification_channel">पेयरिंग अनुरोध</string>

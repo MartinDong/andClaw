@@ -133,6 +133,19 @@
     <string name="settings_brave_search_desc">AIエージェントのウェブ検索を有効にします。任意 — 空欄で無効化されます。</string>
     <string name="settings_brave_search_optional">未設定（任意）</string>
     <string name="settings_brave_search_get_key">Brave Search APIキーを取得 →</string>
+    <string name="settings_memory_search_title">メモリ検索</string>
+    <string name="settings_memory_search_desc">MEMORY.md と memory ファイルのセマンティック検索を使用します。</string>
+    <string name="settings_memory_search_provider">メモリプロバイダー</string>
+    <string name="settings_memory_search_provider_dialog_title">メモリ検索プロバイダー</string>
+    <string name="settings_memory_search_provider_auto">自動（推奨）</string>
+    <string name="settings_memory_search_provider_openai">OpenAI</string>
+    <string name="settings_memory_search_provider_gemini">Gemini</string>
+    <string name="settings_memory_search_provider_voyage">Voyage</string>
+    <string name="settings_memory_search_provider_mistral">Mistral</string>
+    <string name="settings_memory_search_provider_local">ローカル</string>
+    <string name="settings_memory_search_api_key">メモリ検索 API キー</string>
+    <string name="settings_memory_search_api_key_desc">メモリ埋め込み用の任意キー。空欄の場合はプロバイダー既定の認証情報を使います。</string>
+    <string name="settings_memory_search_api_key_optional">未設定（任意）</string>
     <string name="settings_openclaw_doctor_fix">OpenClaw Doctor (Fix)</string>
     <string name="settings_openclaw_doctor_fix_run">`openclaw doctor --fix` を実行</string>
     <string name="settings_openclaw_doctor_fix_running">実行中…</string>
@@ -169,6 +182,7 @@
     <string name="whatsapp_connected">接続完了！</string>
     <string name="whatsapp_connect_error">接続失敗: %1$s</string>
     <string name="whatsapp_qr_share">共有</string>
+    <string name="whatsapp_qr_scan_done">スキャン完了</string>
 
     <!-- Pairing Notification -->
     <string name="pairing_notification_channel">ペアリングリクエスト</string>

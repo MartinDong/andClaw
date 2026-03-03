@@ -133,6 +133,19 @@
     <string name="settings_brave_search_desc">启用 AI 代理的网页搜索。可选 — 留空则禁用。</string>
     <string name="settings_brave_search_optional">未配置（可选）</string>
     <string name="settings_brave_search_get_key">获取 Brave Search API 密钥 →</string>
+    <string name="settings_memory_search_title">记忆搜索</string>
+    <string name="settings_memory_search_desc">为 MEMORY.md 和 memory 文件使用语义记忆检索。</string>
+    <string name="settings_memory_search_provider">记忆提供方</string>
+    <string name="settings_memory_search_provider_dialog_title">记忆搜索提供方</string>
+    <string name="settings_memory_search_provider_auto">自动（推荐）</string>
+    <string name="settings_memory_search_provider_openai">OpenAI</string>
+    <string name="settings_memory_search_provider_gemini">Gemini</string>
+    <string name="settings_memory_search_provider_voyage">Voyage</string>
+    <string name="settings_memory_search_provider_mistral">Mistral</string>
+    <string name="settings_memory_search_provider_local">本地</string>
+    <string name="settings_memory_search_api_key">记忆搜索 API 密钥</string>
+    <string name="settings_memory_search_api_key_desc">用于记忆嵌入的可选覆盖密钥。留空则使用提供方默认凭据。</string>
+    <string name="settings_memory_search_api_key_optional">未配置（可选）</string>
     <string name="settings_openclaw_doctor_fix">OpenClaw Doctor (Fix)</string>
     <string name="settings_openclaw_doctor_fix_run">运行 `openclaw doctor --fix`</string>
     <string name="settings_openclaw_doctor_fix_running">运行中…</string>
@@ -169,6 +182,7 @@
     <string name="whatsapp_connected">已连接！</string>
     <string name="whatsapp_connect_error">连接失败: %1$s</string>
     <string name="whatsapp_qr_share">分享</string>
+    <string name="whatsapp_qr_scan_done">扫描完成</string>
 
     <!-- Pairing Notification -->
     <string name="pairing_notification_channel">配对请求</string>

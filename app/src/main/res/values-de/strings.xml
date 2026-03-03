@@ -138,6 +138,19 @@
     <string name="settings_brave_search_desc">Aktiviert die Websuche für den KI-Agenten. Optional — leer lassen zum Deaktivieren.</string>
     <string name="settings_brave_search_optional">Nicht konfiguriert (optional)</string>
     <string name="settings_brave_search_get_key">Brave Search API-Schlüssel erhalten →</string>
+    <string name="settings_memory_search_title">Speichersuche</string>
+    <string name="settings_memory_search_desc">Semantische Speicherabfrage für MEMORY.md und memory-Dateien verwenden.</string>
+    <string name="settings_memory_search_provider">Speicheranbieter</string>
+    <string name="settings_memory_search_provider_dialog_title">Speichersuche-Anbieter</string>
+    <string name="settings_memory_search_provider_auto">Automatisch (empfohlen)</string>
+    <string name="settings_memory_search_provider_openai">OpenAI</string>
+    <string name="settings_memory_search_provider_gemini">Gemini</string>
+    <string name="settings_memory_search_provider_voyage">Voyage</string>
+    <string name="settings_memory_search_provider_mistral">Mistral</string>
+    <string name="settings_memory_search_provider_local">Lokal</string>
+    <string name="settings_memory_search_api_key">Speichersuche-API-Schlüssel</string>
+    <string name="settings_memory_search_api_key_desc">Optionaler Schlüssel für Speicher-Embeddings. Leer lassen, um die Standard-Zugangsdaten des Anbieters zu verwenden.</string>
+    <string name="settings_memory_search_api_key_optional">Nicht konfiguriert (optional)</string>
     <string name="settings_openclaw_doctor_fix">OpenClaw Doctor (Fix)</string>
     <string name="settings_openclaw_doctor_fix_run">`openclaw doctor --fix` ausführen</string>
     <string name="settings_openclaw_doctor_fix_running">Wird ausgeführt…</string>
@@ -174,6 +187,7 @@
     <string name="whatsapp_connected">Verbunden!</string>
     <string name="whatsapp_connect_error">Verbindung fehlgeschlagen: %1$s</string>
     <string name="whatsapp_qr_share">Teilen</string>
+    <string name="whatsapp_qr_scan_done">Scan abgeschlossen</string>
 
     <!-- Pairing Notification -->
     <string name="pairing_notification_channel">Kopplungsanfragen</string>

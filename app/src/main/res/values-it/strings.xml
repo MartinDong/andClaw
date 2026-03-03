@@ -133,6 +133,19 @@
     <string name="settings_brave_search_desc">Abilita la ricerca web per l\'agente AI. Opzionale — lasciare vuoto per disabilitare.</string>
     <string name="settings_brave_search_optional">Non configurato (opzionale)</string>
     <string name="settings_brave_search_get_key">Ottieni chiave API Brave Search →</string>
+    <string name="settings_memory_search_title">Ricerca memoria</string>
+    <string name="settings_memory_search_desc">Usa il recupero semantico della memoria per MEMORY.md e i file memory.</string>
+    <string name="settings_memory_search_provider">Provider memoria</string>
+    <string name="settings_memory_search_provider_dialog_title">Provider ricerca memoria</string>
+    <string name="settings_memory_search_provider_auto">Automatico (consigliato)</string>
+    <string name="settings_memory_search_provider_openai">OpenAI</string>
+    <string name="settings_memory_search_provider_gemini">Gemini</string>
+    <string name="settings_memory_search_provider_voyage">Voyage</string>
+    <string name="settings_memory_search_provider_mistral">Mistral</string>
+    <string name="settings_memory_search_provider_local">Locale</string>
+    <string name="settings_memory_search_api_key">Chiave API ricerca memoria</string>
+    <string name="settings_memory_search_api_key_desc">Chiave opzionale per gli embedding della memoria. Lasciala vuota per usare le credenziali predefinite del provider.</string>
+    <string name="settings_memory_search_api_key_optional">Non configurato (opzionale)</string>
     <string name="settings_openclaw_doctor_fix">OpenClaw Doctor (Fix)</string>
     <string name="settings_openclaw_doctor_fix_run">Esegui `openclaw doctor --fix`</string>
     <string name="settings_openclaw_doctor_fix_running">In esecuzione…</string>
@@ -169,6 +182,7 @@
     <string name="whatsapp_connected">Connesso!</string>
     <string name="whatsapp_connect_error">Connessione fallita: %1$s</string>
     <string name="whatsapp_qr_share">Condividi</string>
+    <string name="whatsapp_qr_scan_done">Scansione completata</string>
 
     <!-- Pairing Notification -->
     <string name="pairing_notification_channel">Richieste di abbinamento</string>
