@@ -10,7 +10,7 @@ OUTPUT_PATH="${1:-$DEFAULT_OUTPUT}"
 PROOT_COMMIT="${2:-4dba3afbf3a63af89b4d9c1a59bf2bda10f4d10f}"
 
 if ! command -v docker >/dev/null 2>&1; then
-    echo "ERROR: Docker가 필요합니다"
+    echo "ERROR: 需要安装Docker"
     exit 1
 fi
 
@@ -19,7 +19,7 @@ mkdir -p "$(dirname "$OUTPUT_PATH")"
 TMP_DIR="$(mktemp -d)"
 trap 'chmod -R u+w "$TMP_DIR" 2>/dev/null || true; rm -rf "$TMP_DIR" 2>/dev/null || true' EXIT
 
-echo "[loader32] Building 16KB-compatible loader32 from termux/proot commit: $PROOT_COMMIT"
+echo "[loader32] 从termux/proot提交构建16KB兼容的loader32: $PROOT_COMMIT"
 
 docker run --rm --platform linux/arm64 \
     -e "PROOT_COMMIT=$PROOT_COMMIT" \
@@ -76,12 +76,12 @@ docker run --rm --platform linux/arm64 \
 
         readelf -W -l /tmp/build-loader32/loader32 | awk "/^[[:space:]]*LOAD[[:space:]]/ { print \$NF }" > /tmp/build-loader32/alignments.txt
         if [ ! -s /tmp/build-loader32/alignments.txt ]; then
-            echo "ERROR: LOAD segment alignment 정보를 읽지 못했습니다"
+            echo "ERROR: 无法读取LOAD段对齐信息"
             exit 1
         fi
 
         if ! awk "\$1 != \"0x4000\" { bad = 1 } END { exit bad }" /tmp/build-loader32/alignments.txt; then
-            echo "ERROR: loader32가 16KB 정렬이 아닙니다"
+            echo "ERROR: loader32未进行16KB对齐"
             cat /tmp/build-loader32/alignments.txt
             exit 1
         fi
@@ -98,5 +98,5 @@ fi
 cp "$TMP_DIR/out/libproot-loader32.so" "$OUTPUT_PATH"
 chmod +x "$OUTPUT_PATH"
 
-echo "[loader32] Built: $OUTPUT_PATH"
+echo "[loader32] 构建完成: $OUTPUT_PATH"
 readelf -W -l "$OUTPUT_PATH" | awk '/^[[:space:]]*LOAD[[:space:]]/ { print "  ALIGN=" $NF }'

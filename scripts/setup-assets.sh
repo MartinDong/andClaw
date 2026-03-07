@@ -1,31 +1,31 @@
 #!/bin/bash
 #
-# andClaw - 빌드 준비 스크립트 (proot + assets 번들)
+# andClaw - 构建准备脚本 (proot + assets 包)
 #
-# proot 바이너리를 jniLibs에 배치하고,
-# Ubuntu arm64 rootfs, Node.js, 시스템 도구, OpenClaw, Playwright Chromium 을
-# install_time_assets/src/main/assets/ 에 배치한다.
+# 将proot二进制文件放置到jniLibs中,
+# 将Ubuntu arm64 rootfs、Node.js、系统工具、OpenClaw、Playwright Chromium
+# 放置到install_time_assets/src/main/assets/ 目录下。
 #
-# 필요 조건:
-#   - Docker Desktop (arm64 에뮬레이션 지원)
-#   - curl, ar, tar
+# 必要条件:
+#   - Docker Desktop（支持arm64仿真）
+#   - curl、ar、tar
 #
-# 사용법:
+# 使用方法:
 #   chmod +x scripts/setup-assets.sh
 #   ./scripts/setup-assets.sh
 #
-# 이 스크립트 실행 후 생성되는 파일:
+# 执行此脚本后生成的文件:
 #   jniLibs/arm64-v8a/
-#     libproot.so, libtalloc.so, libproot-loader.so, libproot-loader32.so
+#     libproot.so、libtalloc.so、libproot-loader.so、libproot-loader32.so
 #
 #   install_time_assets/src/main/assets/
-#     rootfs.tar.gz.bin                     (~30MB)   Ubuntu 24.04 arm64 base
-#     node-arm64.tar.gz.bin                 (~25MB)   Node.js 22 arm64 linux
-#     system-tools-arm64.tar.gz.bin         (~80-100MB) git, curl, python3, 시스템 libs
-#     openclaw/                             OpenClaw 파일 트리 (증분 업데이트 최적화)
+#     rootfs.tar.gz.bin                     (~30MB)   Ubuntu 24.04 arm64 基础镜像
+#     node-arm64.tar.gz.bin                 (~25MB)   Node.js 22 arm64 linux版本
+#     system-tools-arm64.tar.gz.bin         (~80-100MB) git、curl、python3、系统库
+#     openclaw/                             OpenClaw 文件树（增量更新优化）
 #     playwright-chromium-arm64.tar.gz.bin  (~150-180MB) Chromium headless_shell
 #
-# 업데이트 시 변경: openclaw/ 디렉토리만 갱신하면 됨
+# 更新时只需更改：仅需更新openclaw/目录
 #
 
 set -euo pipefail
@@ -46,9 +46,14 @@ TERMUX_PROOT_COMMIT="${TERMUX_PROOT_COMMIT:-4dba3afbf3a63af89b4d9c1a59bf2bda10f4
 CUSTOM_LOADER32_SCRIPT="$SCRIPT_DIR/build-proot-loader32-16kb.sh"
 
 require_readelf() {
-    if ! command -v readelf >/dev/null 2>&1; then
-        echo "ERROR: readelf가 필요합니다 (binutils 설치 필요)"
-        exit 1
+    if command -v greadelf >/dev/null 2>&1; then
+        READELF_CMD="greadelf"
+    elif command -v readelf >/dev/null 2>&1; then
+        READELF_CMD="readelf"
+    else
+        echo "   WARNING: 未找到readelf/greadelf。跳过16KB对齐验证。"
+        echo "   (可通过brew install binutils安装)"
+        READELF_CMD=""
     fi
 }
 
@@ -56,11 +61,15 @@ is_elf_16kb_compatible() {
     local elf_path="$1"
     local aligns
 
+    if [ -z "$READELF_CMD" ]; then
+        return 0
+    fi
+
     if [ ! -f "$elf_path" ]; then
         return 1
     fi
 
-    aligns=$(readelf -W -l "$elf_path" | awk '/^[[:space:]]*LOAD[[:space:]]/ { print $NF }')
+    aligns=$($READELF_CMD -W -l "$elf_path" | awk '/^[[:space:]]*LOAD[[:space:]]/ { print $NF }')
     if [ -z "$aligns" ]; then
         return 1
     fi
@@ -83,19 +92,19 @@ verify_jnilib_16kb() {
     local loader32="$JNILIBS_DIR/libproot-loader32.so"
     local failed=0
 
-    echo "   jniLibs 16KB 정렬 검증 중..."
+    echo "   正在验证jniLibs 16KB对齐..."
 
     for lib in "${libs[@]}"; do
         local path="$JNILIBS_DIR/$lib"
         if [ ! -f "$path" ]; then
-            echo "   ERROR: $lib 파일이 없습니다"
+            echo "   ERROR: 未找到$lib文件"
             failed=1
             continue
         fi
         if is_elf_16kb_compatible "$path"; then
             echo "   OK: $lib (16KB)"
         else
-            echo "   ERROR: $lib 는 16KB 정렬이 아닙니다"
+            echo "   ERROR: $lib 未进行16KB对齐"
             failed=1
         fi
     done
@@ -104,15 +113,15 @@ verify_jnilib_16kb() {
         if is_elf_16kb_compatible "$loader32"; then
             echo "   OK: libproot-loader32.so (16KB)"
         else
-            echo "   ERROR: libproot-loader32.so 는 16KB 정렬이 아닙니다"
+            echo "   ERROR: libproot-loader32.so 未进行16KB对齐"
             failed=1
         fi
     else
-        echo "   WARNING: libproot-loader32.so 없음"
+        echo "   WARNING: 未找到libproot-loader32.so"
     fi
 
     if [ "$failed" -ne 0 ]; then
-        echo "ERROR: 16KB 정렬 검증 실패"
+        echo "ERROR: 16KB对齐验证失败"
         exit 1
     fi
 }
@@ -121,29 +130,29 @@ ensure_loader32_16kb() {
     local loader32="$JNILIBS_DIR/libproot-loader32.so"
 
     if [ ! -f "$loader32" ]; then
-        echo "   libproot-loader32.so가 없어 소스 빌드를 시도합니다"
+        echo "   未找到libproot-loader32.so，尝试从源代码构建"
     elif is_elf_16kb_compatible "$loader32"; then
-        echo "   libproot-loader32.so 이미 16KB 호환"
+        echo "   libproot-loader32.so 已兼容16KB"
         return
     else
-        echo "   libproot-loader32.so가 4KB 정렬이라 소스 빌드로 교체합니다"
+        echo "   libproot-loader32.so 为4KB对齐，将通过源代码构建替换"
     fi
 
     if [ ! -x "$CUSTOM_LOADER32_SCRIPT" ]; then
-        echo "ERROR: $CUSTOM_LOADER32_SCRIPT 실행 권한 또는 파일이 없습니다"
+        echo "ERROR: $CUSTOM_LOADER32_SCRIPT 文件不存在或无执行权限"
         exit 1
     fi
 
     "$CUSTOM_LOADER32_SCRIPT" "$loader32" "$TERMUX_PROOT_COMMIT"
 
     if ! is_elf_16kb_compatible "$loader32"; then
-        echo "ERROR: 소스 빌드 후에도 libproot-loader32.so 16KB 검증 실패"
+        echo "ERROR: 源代码构建后libproot-loader32.so的16KB验证仍失败"
         exit 1
     fi
 }
 
 echo "============================================"
-echo "  andClaw - 빌드 준비 (proot + assets)"
+echo "  andClaw - 构建准备 (proot + assets)"
 echo "============================================"
 echo ""
 
@@ -151,26 +160,26 @@ mkdir -p "$JNILIBS_DIR"
 mkdir -p "$ASSETS_DIR"
 
 # ══════════════════════════════════════════════
-#  Part 1: proot 바이너리 (jniLibs)
+#  Part 1: proot二进制文件 (jniLibs)
 # ══════════════════════════════════════════════
 
 if [ -f "$JNILIBS_DIR/libproot.so" ] && [ -f "$JNILIBS_DIR/libtalloc.so" ]; then
-    echo "[1/7] proot 바이너리 이미 존재, 건너뜀"
+    echo "[1/7] proot二进制文件已存在，跳过"
     ls -lh "$JNILIBS_DIR/"*.so 2>/dev/null | while read line; do echo "   $line"; done
 else
-    echo "[1/7] proot 바이너리 설정 중..."
+    echo "[1/7] 正在配置proot二进制文件..."
 
     TMP_DIR=$(mktemp -d)
     trap "rm -rf $TMP_DIR" EXIT
 
-    # proot 다운로드 & 추출
-    echo "   proot 패키지 다운로드 중..."
+    # 下载并提取proot
+    echo "   正在下载proot包..."
     curl -fSL "$PROOT_DEB_URL" -o "$TMP_DIR/proot.deb"
 
     cd "$TMP_DIR"
     mkdir -p proot_extract
     cd proot_extract
-    ar x ../proot.deb
+    tar -xf ../proot.deb
     if [ -f data.tar.xz ]; then
         tar xf data.tar.xz 2>/dev/null || (xz -d data.tar.xz && tar xf data.tar 2>/dev/null) || true
     elif [ -f data.tar.gz ]; then
@@ -181,18 +190,18 @@ else
 
     PROOT_BIN=$(find . -name "proot" -type f | head -1)
     if [ -z "$PROOT_BIN" ]; then
-        echo "   ERROR: proot 바이너리를 찾을 수 없습니다!"
+        echo "   ERROR: 未找到proot二进制文件!"
         exit 1
     fi
 
-    # libtalloc 다운로드 & 추출
-    echo "   libtalloc 패키지 다운로드 중..."
+    # 下载并提取libtalloc
+    echo "   正在下载libtalloc包..."
     cd "$TMP_DIR"
     curl -fSL "$TALLOC_DEB_URL" -o "$TMP_DIR/talloc.deb"
 
     mkdir -p talloc_extract
     cd talloc_extract
-    ar x ../talloc.deb
+    tar -xf ../talloc.deb
     if [ -f data.tar.xz ]; then
         tar xf data.tar.xz 2>/dev/null || (xz -d data.tar.xz && tar xf data.tar 2>/dev/null) || true
     elif [ -f data.tar.gz ]; then
@@ -203,11 +212,11 @@ else
 
     TALLOC_LIB=$(find . -name "libtalloc.so*" -type f | head -1)
     if [ -z "$TALLOC_LIB" ]; then
-        echo "   ERROR: libtalloc.so 를 찾을 수 없습니다!"
+        echo "   ERROR: 未找到libtalloc.so!"
         exit 1
     fi
 
-    # jniLibs 에 배치
+    # 放置到jniLibs
     cp "$TMP_DIR/proot_extract/$PROOT_BIN" "$JNILIBS_DIR/libproot.so"
     cp "$TMP_DIR/talloc_extract/$TALLOC_LIB" "$JNILIBS_DIR/libtalloc.so"
 
@@ -219,7 +228,7 @@ else
         chmod +x "$JNILIBS_DIR/libproot-loader.so"
         echo "   proot-loader: OK"
     else
-        echo "   WARNING: proot-loader 없음"
+        echo "   WARNING: 未找到proot-loader"
     fi
 
     if [ -n "$LOADER32_BIN" ]; then
@@ -227,7 +236,7 @@ else
         chmod +x "$JNILIBS_DIR/libproot-loader32.so"
         echo "   proot-loader32: OK"
     else
-        echo "   WARNING: proot-loader32 없음"
+        echo "   WARNING: 未找到proot-loader32"
     fi
 
     chmod +x "$JNILIBS_DIR/libproot.so"
@@ -236,7 +245,7 @@ else
     rm -rf "$TMP_DIR"
     trap - EXIT
 
-    echo "   proot 바이너리 설정 완료"
+    echo "   proot二进制文件配置完成"
     ls -lh "$JNILIBS_DIR/"
 fi
 
@@ -248,46 +257,46 @@ verify_jnilib_16kb
 #  Part 2: assets 번들
 # ══════════════════════════════════════════════
 
-# ── 2. Ubuntu rootfs 다운로드 ──
+# ── 2. 下载Ubuntu rootfs ──
 ROOTFS_FILE="$ASSETS_DIR/rootfs.tar.gz.bin"
 if [ -f "$ROOTFS_FILE" ]; then
-    echo "[2/7] rootfs.tar.gz.bin 이미 존재, 건너뜀"
-    echo "   크기: $(du -h "$ROOTFS_FILE" | cut -f1)"
+    echo "[2/7] rootfs.tar.gz.bin 已存在，跳过"
+    echo "   大小: $(du -h "$ROOTFS_FILE" | cut -f1)"
 else
-    echo "[2/7] Ubuntu 24.04 arm64 rootfs 다운로드 중..."
+    echo "[2/7] 正在下载Ubuntu 24.04 arm64 rootfs..."
     echo "   URL: $ROOTFS_URL"
     curl -fSL "$ROOTFS_URL" -o "$ROOTFS_FILE"
-    echo "   완료: $(du -h "$ROOTFS_FILE" | cut -f1)"
+    echo "   完成: $(du -h "$ROOTFS_FILE" | cut -f1)"
 fi
 
-# ── 3. Node.js 다운로드 ──
+# ── 3. 下载Node.js ──
 NODEJS_FILE="$ASSETS_DIR/node-arm64.tar.gz.bin"
 if [ -f "$NODEJS_FILE" ]; then
-    echo "[3/7] node-arm64.tar.gz.bin 이미 존재, 건너뜀"
-    echo "   크기: $(du -h "$NODEJS_FILE" | cut -f1)"
+    echo "[3/7] node-arm64.tar.gz.bin 已存在，跳过"
+    echo "   大小: $(du -h "$NODEJS_FILE" | cut -f1)"
 else
-    echo "[3/7] Node.js $NODEJS_VERSION arm64 다운로드 중..."
+    echo "[3/7] 正在下载Node.js $NODEJS_VERSION arm64..."
     echo "   URL: $NODEJS_URL"
     curl -fSL "$NODEJS_URL" -o "$NODEJS_FILE"
-    echo "   완료: $(du -h "$NODEJS_FILE" | cut -f1)"
+    echo "   完成: $(du -h "$NODEJS_FILE" | cut -f1)"
 fi
 
-# ── Docker 필수 확인 ──
+# ── 检查Docker是否安装 ──
 check_docker() {
     if ! command -v docker &>/dev/null; then
-        echo "   ERROR: Docker가 필요합니다"
+        echo "   ERROR: 需要安装Docker"
         exit 1
     fi
 }
 
-# ── 4. 시스템 도구 번들 (Docker Build 1) ──
+# ── 4. 构建系统工具包 (Docker Build 1) ──
 TOOLS_FILE="$ASSETS_DIR/system-tools-arm64.tar.gz.bin"
 if [ -f "$TOOLS_FILE" ]; then
-    echo "[4/7] system-tools-arm64.tar.gz.bin 이미 존재, 건너뜀"
-    echo "   크기: $(du -h "$TOOLS_FILE" | cut -f1)"
+    echo "[4/7] system-tools-arm64.tar.gz.bin 已存在，跳过"
+    echo "   大小: $(du -h "$TOOLS_FILE" | cut -f1)"
 else
-    echo "[4/7] 시스템 도구 번들 빌드 중 (Docker)..."
-    echo "   git, curl, python3, 시스템 libs, Chromium deps 포함"
+    echo "[4/7] 正在构建系统工具包 (Docker)..."
+    echo "   包含git、curl、python3、系统库、Chromium依赖"
     check_docker
 
     docker rm -f andclaw-tools-builder 2>/dev/null || true
@@ -295,10 +304,24 @@ else
     docker run --platform linux/arm64 --name andclaw-tools-builder ubuntu:24.04 bash -c "
         set -e
         export DEBIAN_FRONTEND=noninteractive
-        echo '--- apt-get update ---'
+        
+        # 先安装 ca-certificates (使用HTTP源)
+        sed -i 's|https://mirrors.aliyun.com|http://mirrors.aliyun.com|g' /etc/apt/sources.list.d/ubuntu.sources 2>/dev/null || \
+        sed -i 's|https://archive.ubuntu.com|http://archive.ubuntu.com|g' /etc/apt/sources.list 2>/dev/null || true
+        
         apt-get update -qq
-
-        # libs 스냅샷 (설치 전)
+        apt-get install -y -qq --no-install-recommends ca-certificates
+        
+        # 切换到HTTPS源
+        sed -i 's|http://mirrors.aliyun.com|https://mirrors.aliyun.com|g' /etc/apt/sources.list.d/ubuntu.sources 2>/dev/null || \
+        sed -i 's|http://archive.ubuntu.com|https://archive.ubuntu.com|g' /etc/apt/sources.list 2>/dev/null || true
+        
+        echo '--- apt-get update ---'
+        for i in 1 2 3; do
+            apt-get update -qq && break || { echo 'apt-get update failed, retrying...'; sleep 5; }
+        done
+        
+        # 安装前的库快照
         echo '--- Snapshot libs before installs ---'
         find /usr/lib -type f -o -type l 2>/dev/null | sort > /tmp/libs-before.txt
 
@@ -317,7 +340,7 @@ else
         python3 --version
         curl --version | head -1
 
-        # Chromium 시스템 의존성
+        # Chromium系统依赖
         echo '--- Installing Chromium system dependencies ---'
         apt-get install -y -qq --no-install-recommends \\
             libnss3 libnspr4 libatk1.0-0 libatk-bridge2.0-0 libcups2 \\
@@ -331,7 +354,7 @@ else
         comm -13 /tmp/libs-before.txt /tmp/libs-after.txt > /tmp/new-libs.txt
         echo \"New libs count: \$(wc -l < /tmp/new-libs.txt)\"
 
-        # 바이너리 목록 생성
+        # 生成二进制文件列表
         echo '--- Collecting binaries ---'
         > /tmp/bin-list.txt
         for bin in \\
@@ -386,10 +409,10 @@ else
     docker cp andclaw-tools-builder:/tmp/system-tools.tar.gz "$TOOLS_FILE"
     docker rm andclaw-tools-builder
 
-    echo "   완료: $(du -h "$TOOLS_FILE" | cut -f1)"
+    echo "   完成: $(du -h "$TOOLS_FILE" | cut -f1)"
 fi
 
-# ── 5. OpenClaw 파일 자산 (Docker Build 2) ──
+# ── 5. 构建OpenClaw文件资产 (Docker Build 2) ──
 OPENCLAW_ASSET_DIR="$ASSETS_DIR/openclaw"
 OPENCLAW_MAIN="$OPENCLAW_ASSET_DIR/usr/local/lib/node_modules/openclaw/openclaw.mjs"
 OPENCLAW_BIN="$OPENCLAW_ASSET_DIR/usr/local/bin/openclaw"
@@ -419,7 +442,7 @@ encode_openclaw_underscore_paths() {
     if [ ! -d "$openclaw_root" ]; then
         return
     fi
-    # Android assets 패키징에서 '_*' 파일/디렉토리가 누락될 수 있어 안전한 이름으로 인코딩
+    # Android assets打包时可能会遗漏'_*'文件/目录，因此使用安全名称进行编码
     find "$openclaw_root" -depth \( -type d -o -type f \) | while read -r path; do
         name="$(basename "$path")"
         parent="$(dirname "$path")"
@@ -437,10 +460,10 @@ encode_openclaw_underscore_paths() {
 
 
 if [ -f "$OPENCLAW_MAIN" ] && [ -f "$OPENCLAW_BIN" ] && [ -f "$OPENCLAW_ANTHROPIC_PARSER" ]; then
-    echo "[5/7] openclaw 디렉토리 자산 이미 존재, 건너뜀"
-    echo "   크기: $(du -sh "$OPENCLAW_ASSET_DIR" | cut -f1)"
+    echo "[5/7] openclaw目录资产已存在，跳过"
+    echo "   大小: $(du -sh "$OPENCLAW_ASSET_DIR" | cut -f1)"
 else
-    echo "[5/7] OpenClaw 디렉토리 자산 빌드 중 (Docker)..."
+    echo "[5/7] 正在构建OpenClaw目录资产 (Docker)..."
     echo "   npm install -g openclaw (latest)"
     check_docker
 
@@ -451,7 +474,24 @@ else
     docker run --platform linux/arm64 --name andclaw-openclaw-builder ubuntu:24.04 bash -c "
         set -e
         export DEBIAN_FRONTEND=noninteractive
+        
+        # 先安装 ca-certificates (使用HTTP源)
+        sed -i 's|https://mirrors.aliyun.com|http://mirrors.aliyun.com|g' /etc/apt/sources.list.d/ubuntu.sources 2>/dev/null || \
+        sed -i 's|https://archive.ubuntu.com|http://archive.ubuntu.com|g' /etc/apt/sources.list 2>/dev/null || true
+        
         apt-get update -qq
+        apt-get install -y -qq --no-install-recommends ca-certificates
+        
+        # 切换到HTTPS源
+        sed -i 's|http://mirrors.aliyun.com|https://mirrors.aliyun.com|g' /etc/apt/sources.list.d/ubuntu.sources 2>/dev/null || \
+        sed -i 's|http://archive.ubuntu.com|https://archive.ubuntu.com|g' /etc/apt/sources.list 2>/dev/null || true
+        
+        for i in 1 2 3; do
+            apt-get update -qq && break || {
+                echo 'apt-get update failed, retrying...'
+                sleep 5
+            }
+        done
         apt-get install -y -qq --no-install-recommends curl ca-certificates git
 
         echo '--- Installing Node.js ---'
@@ -459,10 +499,14 @@ else
         node --version
 
         echo '--- Installing OpenClaw ---'
+        npm config set registry https://registry.npmjs.org/
+        npm config set fetch-retries 5
+        npm config set fetch-retry-mintimeout 20000
+        npm config set fetch-retry-maxtimeout 120000
         npm install -g openclaw 2>&1
 
-        # 호환성: 일부 번들/의존성은 구 경로(_vendor/json-parser/json-parser.js)를 참조할 수 있다.
-        # 최신 SDK는 _vendor/partial-json-parser/parser.js를 사용하므로 shim을 생성해 둘 다 동작하게 한다.
+        # 兼容性：某些包/依赖可能引用旧路径(_vendor/json-parser/json-parser.js)。
+        # 最新SDK使用_vendor/partial-json-parser/parser.js，因此生成shim以兼容两种路径。
         for sdk_root in \
             /usr/local/lib/node_modules/openclaw/node_modules/@anthropic-ai/sdk \
             /usr/local/lib/node_modules/openclaw/extensions/memory-lancedb/node_modules/@anthropic-ai/sdk \
@@ -474,10 +518,10 @@ else
             fi
         done
 
-        # Windows docker cp에서 symlink 생성 권한 오류를 피하기 위해 .bin 심링크 제거
+        # 为避免Windows docker cp中的符号链接创建权限错误，删除.bin符号链接
         find /usr/local/lib/node_modules/openclaw/node_modules -path '*/.bin/*' -type l -delete || true
 
-        # openclaw bin symlink -> 셸 래퍼로 교체 (ESM 상대 경로 호환성)
+        # 将openclaw bin符号链接替换为shell包装器（ESM相对路径兼容性）
         rm -f /usr/local/bin/openclaw
         printf '#!/bin/sh\nexec node /usr/local/lib/node_modules/openclaw/openclaw.mjs \"\$@\"\n' > /usr/local/bin/openclaw
         chmod +x /usr/local/bin/openclaw
@@ -490,21 +534,21 @@ else
     docker cp andclaw-openclaw-builder:/usr/local/bin/openclaw "$OPENCLAW_ASSET_DIR/usr/local/bin/openclaw"
     docker rm andclaw-openclaw-builder
 
-    echo "   완료: $(du -sh "$OPENCLAW_ASSET_DIR" | cut -f1)"
+    echo "   完成: $(du -sh "$OPENCLAW_ASSET_DIR" | cut -f1)"
 fi
 
-# 일부 npm 조합에서 _vendor/json-parser 경로를 요구하므로, 에셋 복사 후 호스트에서 shim을 다시 보장한다.
+# 由于某些npm组合需要_vendor/json-parser路径，因此在资产复制后再次在主机上确保shim存在。
 ensure_openclaw_json_parser_shim
-# assets 패키징 전 _* 경로 인코딩
+# assets打包前对_*路径进行编码
 encode_openclaw_underscore_paths
 
-# ── 6. Playwright Chromium 번들 (Docker Build 3) ──
+# ── 6. 构建Playwright Chromium包 (Docker Build 3) ──
 PLAYWRIGHT_FILE="$ASSETS_DIR/playwright-chromium-arm64.tar.gz.bin"
 if [ -f "$PLAYWRIGHT_FILE" ]; then
-    echo "[6/7] playwright-chromium-arm64.tar.gz.bin 이미 존재, 건너뜀"
-    echo "   크기: $(du -h "$PLAYWRIGHT_FILE" | cut -f1)"
+    echo "[6/7] playwright-chromium-arm64.tar.gz.bin 已存在，跳过"
+    echo "   大小: $(du -h "$PLAYWRIGHT_FILE" | cut -f1)"
 else
-    echo "[6/7] Playwright Chromium 번들 빌드 중 (Docker)..."
+    echo "[6/7] 正在构建Playwright Chromium包 (Docker)..."
     echo "   Playwright $PLAYWRIGHT_VERSION, Chromium headless_shell only"
     check_docker
 
@@ -513,7 +557,21 @@ else
     docker run --platform linux/arm64 --name andclaw-playwright-builder ubuntu:24.04 bash -c "
         set -e
         export DEBIAN_FRONTEND=noninteractive
+        
+        # 先安装 ca-certificates (使用HTTP源)
+        sed -i 's|https://mirrors.aliyun.com|http://mirrors.aliyun.com|g' /etc/apt/sources.list.d/ubuntu.sources 2>/dev/null || \
+        sed -i 's|https://archive.ubuntu.com|http://archive.ubuntu.com|g' /etc/apt/sources.list 2>/dev/null || true
+        
         apt-get update -qq
+        apt-get install -y -qq --no-install-recommends ca-certificates
+        
+        # 切换到HTTPS源
+        sed -i 's|http://mirrors.aliyun.com|https://mirrors.aliyun.com|g' /etc/apt/sources.list.d/ubuntu.sources 2>/dev/null || \
+        sed -i 's|http://archive.ubuntu.com|https://archive.ubuntu.com|g' /etc/apt/sources.list 2>/dev/null || true
+        
+        for i in 1 2 3; do
+            apt-get update -qq && break || { echo 'apt-get update failed, retrying...'; sleep 5; }
+        done
         apt-get install -y -qq --no-install-recommends curl ca-certificates
 
         echo '--- Installing Node.js ---'
@@ -525,7 +583,7 @@ else
 
         PW_DIR=/root/.cache/ms-playwright
 
-        # full chromium 디렉토리 삭제 (chromium-XXXX)
+        # 删除完整的chromium目录 (chromium-XXXX)
         FULL_CHROME_DIR=\$(find \$PW_DIR -maxdepth 1 -type d -name 'chromium-*' 2>/dev/null | head -1)
         if [ -n \"\$FULL_CHROME_DIR\" ]; then
             echo \"Removing full chrome: \$FULL_CHROME_DIR (\$(du -sh \$FULL_CHROME_DIR | cut -f1))\"
@@ -559,27 +617,27 @@ else
     docker cp andclaw-playwright-builder:/tmp/playwright.tar.gz "$PLAYWRIGHT_FILE"
     docker rm andclaw-playwright-builder
 
-    echo "   완료: $(du -h "$PLAYWRIGHT_FILE" | cut -f1)"
+    echo "   完成: $(du -h "$PLAYWRIGHT_FILE" | cut -f1)"
 fi
 
-# ── 7. 정리 ──
-echo "[7/7] 정리 중..."
+# ── 7. 清理 ──
+echo "[7/7] 正在清理..."
 
-# 기존 통합 번들 삭제
+# 删除旧的集成包
 OLD_BUNDLE="$ASSETS_DIR/openclaw-bundle-arm64.tar.gz.bin"
 if [ -f "$OLD_BUNDLE" ]; then
-    echo "   기존 통합 번들 삭제: openclaw-bundle-arm64.tar.gz.bin"
+    echo "   删除旧集成包: openclaw-bundle-arm64.tar.gz.bin"
     rm -f "$OLD_BUNDLE"
 fi
 
-# 기존 OpenClaw tar 자산 삭제 (디렉토리 방식으로 이관)
+# 删除旧的OpenClaw tar资产（已迁移到目录方式）
 OLD_OPENCLAW_TAR="$ASSETS_DIR/openclaw-arm64.tar.gz.bin"
 if [ -f "$OLD_OPENCLAW_TAR" ]; then
-    echo "   구형 OpenClaw tar 삭제: openclaw-arm64.tar.gz.bin"
+    echo "   删除旧OpenClaw tar: openclaw-arm64.tar.gz.bin"
     rm -f "$OLD_OPENCLAW_TAR"
 fi
 
-# 실행 권한 복원을 위한 매니페스트 생성
+# 生成用于恢复执行权限的清单
 EXEC_MANIFEST="$ASSETS_DIR/executable-manifest.json"
 cat > "$EXEC_MANIFEST" <<'JSON'
 {
@@ -594,11 +652,11 @@ cat > "$EXEC_MANIFEST" <<'JSON'
   }
 }
 JSON
-echo "   executable-manifest.json 생성 완료"
+echo "   executable-manifest.json 生成完成"
 
 echo ""
 echo "============================================"
-echo "  완료!"
+echo "  完成!"
 echo "============================================"
 echo ""
 echo "jniLibs:"
@@ -607,6 +665,6 @@ echo ""
 echo "assets:"
 ls -lh "$ASSETS_DIR/"
 echo ""
-echo "총 assets 크기: $(du -sh "$ASSETS_DIR/" | cut -f1)"
+echo "总assets大小: $(du -sh "$ASSETS_DIR/" | cut -f1)"
 echo ""
-echo "다음 단계: Android Studio 에서 빌드"
+echo "下一步: 在Android Studio中构建"
