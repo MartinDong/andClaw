@@ -25,12 +25,18 @@ android {
             keyAlias = "androiddebugkey"
             keyPassword = "android"
         }
-       create("release") {
-           storeFile = file(keystoreProperties.getProperty("storeFile", "../andclaw-release.keystore"))
-           storePassword = keystoreProperties.getProperty("storePassword", System.getenv("KEYSTORE_PASSWORD") ?: "android")
-           keyAlias = keystoreProperties.getProperty("keyAlias", "andclaw")
-           keyPassword = keystoreProperties.getProperty("keyPassword", System.getenv("KEYSTORE_PASSWORD") ?: "android")
-       }
+        create("release") {
+            storeFile = rootProject.file("debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
+//        create("release") {
+//            storeFile = file(keystoreProperties.getProperty("storeFile", "../andclaw-release.keystore"))
+//            storePassword = keystoreProperties.getProperty("storePassword", System.getenv("KEYSTORE_PASSWORD") ?: "")
+//            keyAlias = keystoreProperties.getProperty("keyAlias", "andclaw")
+//            keyPassword = keystoreProperties.getProperty("keyPassword", System.getenv("KEYSTORE_PASSWORD") ?: "")
+//        }
     }
 
     defaultConfig {
@@ -99,7 +105,7 @@ android {
         jvmTarget = "11"
     }
 
-    // 调试/发布APK：将PAD assets直接包含在APK中（对于AAB格式，由Play Asset Delivery处理）
+    // 调试APK：将PAD assets直接包含在APK中（对于AAB格式，由Play Asset Delivery处理）
     sourceSets {
         getByName("debug") {
             assets.srcDirs("../install_time_assets/src/main/assets")
@@ -123,6 +129,9 @@ android {
         }
     }
 
+    // Play Asset Delivery (PAD)：将大型assets分离到独立的asset pack中
+    // 这样可以减小主APK大小，用户首次启动时再按需下载资源
+    assetPacks += listOf(":install_time_assets")
 }
 
 dependencies {
