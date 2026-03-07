@@ -32,3 +32,6 @@ app/src/main/assets/*.bin
 
 # PAD assets (대용량 번들, 스크립트로 생성됨)
 install_time_assets/src/
+
+# Local runtime/debug logs
+logs/
