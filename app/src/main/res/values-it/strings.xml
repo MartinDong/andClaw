@@ -106,6 +106,7 @@
     <string name="settings_api_key">Chiave API</string>
     <string name="settings_api_key_configured">Configurata</string>
     <string name="settings_api_key_not_configured">Non configurata</string>
+    <string name="settings_api_key_not_required">Non richiesto</string>
     <string name="settings_api_key_hint">Inserisci la tua chiave API</string>
     <string name="settings_api_key_save">Salva</string>
     <string name="settings_api_key_cancel">Annulla</string>
@@ -113,7 +114,12 @@
     <string name="settings_restart_confirm_message">Riavviare il gateway ora?</string>
     <string name="settings_restart_confirm_yes">Sì</string>
     <string name="settings_restart_confirm_no">No</string>
-<string name="settings_select_model">Seleziona modello</string>
+    <string name="settings_select_model">Seleziona modello</string>
+
+    <string name="settings_default_model_label">Modello predefinito</string>
+    <string name="settings_default_model_none">Nessun modello predefinito selezionato</string>
+    <string name="settings_tab_model">Modello</string>
+
     <string name="settings_model_default">Predefinito (Auto Select Free)</string>
     <string name="settings_model_restart_hint">Riavvia il gateway per applicare il nuovo modello</string>
     <string name="settings_model_loading">Caricamento modelli…</string>
@@ -123,6 +129,7 @@
     <string name="settings_model_close">Chiudi</string>
     <string name="settings_model_section_free">Gratuiti</string>
     <string name="settings_model_free_warning">I modelli gratuiti possono essere lenti o non rispondere durante i periodi di alta richiesta</string>
+    <string name="settings_model_selection_guide">Puoi selezionare i modelli da usare oppure lasciare l’elenco vuoto. Puoi anche impostare uno dei modelli selezionati come modello predefinito.</string>
     <string name="settings_model_section_paid">A pagamento</string>
     <string name="settings_section_about">Informazioni</string>
     <string name="settings_disclaimer">Questa app non è un\'app ufficiale di OpenClaw</string>

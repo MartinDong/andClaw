@@ -106,6 +106,7 @@
     <string name="settings_api_key">API 密钥</string>
     <string name="settings_api_key_configured">已配置</string>
     <string name="settings_api_key_not_configured">未配置</string>
+    <string name="settings_api_key_not_required">非必需</string>
     <string name="settings_api_key_hint">输入您的 API 密钥</string>
     <string name="settings_api_key_save">保存</string>
     <string name="settings_api_key_cancel">取消</string>
@@ -113,7 +114,12 @@
     <string name="settings_restart_confirm_message">现在重启网关吗？</string>
     <string name="settings_restart_confirm_yes">是</string>
     <string name="settings_restart_confirm_no">否</string>
-<string name="settings_select_model">选择模型</string>
+    <string name="settings_select_model">选择模型</string>
+
+    <string name="settings_default_model_label">默认模型</string>
+    <string name="settings_default_model_none">未选择默认模型</string>
+    <string name="settings_tab_model">模型</string>
+
     <string name="settings_model_default">默认（Auto Select Free）</string>
     <string name="settings_model_restart_hint">请重启网关以应用新模型</string>
     <string name="settings_model_loading">正在加载模型…</string>
@@ -123,6 +129,7 @@
     <string name="settings_model_close">关闭</string>
     <string name="settings_model_section_free">免费</string>
     <string name="settings_model_free_warning">免费模型在高峰期可能响应缓慢或无响应</string>
+    <string name="settings_model_selection_guide">你可以选择要使用的模型，也可以将列表留空。你还可以把已选模型中的一个设为默认模型。</string>
     <string name="settings_model_section_paid">付费</string>
     <string name="settings_section_about">关于</string>
     <string name="settings_disclaimer">此应用不是 OpenClaw 的官方应用</string>

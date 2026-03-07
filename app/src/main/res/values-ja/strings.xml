@@ -106,6 +106,7 @@
     <string name="settings_api_key">APIキー</string>
     <string name="settings_api_key_configured">設定済み</string>
     <string name="settings_api_key_not_configured">未設定</string>
+    <string name="settings_api_key_not_required">必須ではありません</string>
     <string name="settings_api_key_hint">APIキーを入力</string>
     <string name="settings_api_key_save">保存</string>
     <string name="settings_api_key_cancel">キャンセル</string>
@@ -113,7 +114,12 @@
     <string name="settings_restart_confirm_message">今すぐゲートウェイを再起動しますか？</string>
     <string name="settings_restart_confirm_yes">はい</string>
     <string name="settings_restart_confirm_no">いいえ</string>
-<string name="settings_select_model">モデルを選択</string>
+    <string name="settings_select_model">モデルを選択</string>
+
+    <string name="settings_default_model_label">デフォルトモデル</string>
+    <string name="settings_default_model_none">デフォルトモデルが選択されていません</string>
+    <string name="settings_tab_model">モデル</string>
+
     <string name="settings_model_default">デフォルト（Auto Select Free）</string>
     <string name="settings_model_restart_hint">新しいモデルを適用するにはゲートウェイを再起動してください</string>
     <string name="settings_model_loading">モデルを読み込み中…</string>
@@ -123,6 +129,7 @@
     <string name="settings_model_close">閉じる</string>
     <string name="settings_model_section_free">無料</string>
     <string name="settings_model_free_warning">無料モデルはサーバー混雑時に応答が遅くなる場合があります</string>
+    <string name="settings_model_selection_guide">使用するモデルを選択するか、一覧を空のままにできます。必要に応じて、選択したモデルの1つを既定モデルに設定できます。</string>
     <string name="settings_model_section_paid">有料</string>
     <string name="settings_section_about">情報</string>
     <string name="settings_disclaimer">このアプリは OpenClaw の公式アプリではありません</string>

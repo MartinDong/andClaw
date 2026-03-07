@@ -19,14 +19,18 @@ import com.coderred.andclaw.BuildConfig
 import com.coderred.andclaw.data.BugReportBundleBuilder
 import com.coderred.andclaw.data.BugReportZipArtifact
 import com.coderred.andclaw.data.BugReportZipWriter
-import com.coderred.andclaw.data.SetupState
-import com.coderred.andclaw.data.OpenRouterModel
-import com.coderred.andclaw.data.SessionLogEntry
-import com.coderred.andclaw.data.parseOpenRouterModels
 import com.coderred.andclaw.data.GatewayStatus
+import com.coderred.andclaw.data.OpenRouterModel
+import com.coderred.andclaw.data.PreferencesManager
+import com.coderred.andclaw.data.SelectedModelConfigEntry
+import com.coderred.andclaw.data.SessionLogEntry
+import com.coderred.andclaw.data.SetupState
+import com.coderred.andclaw.data.GlobalDefaultModelOption
 import com.coderred.andclaw.data.isSessionError
+import com.coderred.andclaw.data.parseOpenRouterModels
 import com.coderred.andclaw.proot.BundleUpdateOutcome
 import com.coderred.andclaw.proot.GatewayWsClient
+import com.coderred.andclaw.proot.ProcessManager
 import com.coderred.andclaw.proot.WhatsAppLoginCoordinator
 import com.coderred.andclaw.service.GatewayService
 import com.coderred.andclaw.ui.screen.dashboard.WhatsAppQrState
@@ -144,11 +148,29 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     val openAiCompatibleBaseUrl: StateFlow<String> = prefs.openAiCompatibleBaseUrl
         .stateIn(viewModelScope, SharingStarted.Eagerly, "https://api.openai.com/v1")
 
+    val openAiCompatibleModelId: StateFlow<String> = prefs.openAiCompatibleModelId
+        .stateIn(viewModelScope, SharingStarted.Eagerly, "")
+
     val openClawVersion: StateFlow<String> = prefs.openClawVersion
         .stateIn(viewModelScope, SharingStarted.Eagerly, "")
 
     val selectedModel: StateFlow<String> = prefs.selectedModel
         .stateIn(viewModelScope, SharingStarted.Eagerly, "")
+
+    val selectedModelProvider: StateFlow<String> = prefs.selectedModelProvider
+        .stateIn(viewModelScope, SharingStarted.Eagerly, "")
+
+    val currentProviderSelectedModelIds: StateFlow<List<String>> = prefs.currentProviderSelectedModelIds
+        .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+
+    val currentProviderPrimaryModelId: StateFlow<String> = prefs.currentProviderPrimaryModelId
+        .stateIn(viewModelScope, SharingStarted.Eagerly, "")
+
+    val currentProviderGlobalPrimaryModelId: StateFlow<String> = prefs.currentProviderGlobalPrimaryModelId
+        .stateIn(viewModelScope, SharingStarted.Eagerly, "")
+
+    val globalDefaultModelOptions: StateFlow<List<GlobalDefaultModelOption>> = prefs.globalDefaultModelOptions
+        .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
     val braveSearchApiKey: StateFlow<String> = prefs.braveSearchApiKey
         .stateIn(viewModelScope, SharingStarted.Eagerly, "")
@@ -251,6 +273,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
 
     init {
         viewModelScope.launch(Dispatchers.IO) {
+            prefs.backfillSelectedModelProviderIfMissing()
             val provider = prefs.apiProvider.first()
             if (provider == "openai-codex") {
                 _isCodexAuthenticated.value = detectCodexAuth()
@@ -288,125 +311,297 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
-    fun setApiProvider(provider: String) {
+    fun setApiProvider(
+        provider: String,
+        onApplied: ((appliedProvider: String, changed: Boolean) -> Unit)? = null,
+    ) {
         viewModelScope.launch(Dispatchers.IO) {
+            val previousLaunchConfig = prefs.getGatewayLaunchConfigSnapshot()
             val previousProvider = prefs.apiProvider.first()
-            val previousSelectedModel = prefs.selectedModel.first().trim()
-            if (previousProvider == "openai-compatible" && previousSelectedModel.isNotBlank()) {
-                prefs.setOpenAiCompatibleModelId(previousSelectedModel.removePrefix("openai-compatible/"))
+            val previousPrimaryModelId = prefs.currentProviderPrimaryModelId.first().trim()
+            if (previousProvider == "openai-compatible" && previousPrimaryModelId.isNotBlank()) {
+                prefs.setOpenAiCompatibleModelId(previousPrimaryModelId.removePrefix("openai-compatible/"))
             }
             prefs.setApiProvider(provider)
-            val defaultModelId = when (provider) {
-                "openrouter" -> "openrouter/free"
-                "anthropic" -> "claude-sonnet-4-5"
-                "openai" -> "gpt-5-mini"
-                "openai-codex" -> "gpt-5.3-codex"
-                "openai-compatible" -> "gpt-4o-mini"
-                "google" -> "gemini-2.5-flash"
-                else -> ""
-            }
-            val targetModelId = when (provider) {
-                "openai-compatible" -> prefs.openAiCompatibleModelId.first()
-                    .trim()
-                    .ifBlank { defaultModelId }
-                else -> defaultModelId
-            }
-            if (targetModelId.isNotBlank()) {
-                if (provider == "openai-compatible") {
-                    val targetMetadata = resolveOpenAiCompatibleModelMetadata(targetModelId)
-                    prefs.setSelectedModel(targetMetadata)
-                    prefs.setOpenAiCompatibleModelId(targetMetadata.id)
-                } else {
-                    prefs.setSelectedModelId(targetModelId)
-                }
-                val openAiCompatBaseUrl = prefs.openAiCompatibleBaseUrl.first()
-                processManager.ensureOpenClawConfig(
-                    apiProvider = provider,
-                    selectedModel = targetModelId,
-                    openAiCompatibleBaseUrl = openAiCompatBaseUrl,
-                )
-            }
-            if (provider == "openai-codex") {
+            val appliedProvider = prefs.apiProvider.first()
+            val appliedLaunchConfig = prefs.getGatewayLaunchConfigSnapshot()
+            val runtimeChanged = hasRuntimeLaunchConfigChanged(
+                previous = previousLaunchConfig,
+                current = appliedLaunchConfig,
+            )
+            if (appliedProvider == "openai-codex") {
                 refreshCodexAuthStatus()
+            }
+            if (onApplied != null) {
+                withContext(Dispatchers.Main) {
+                    onApplied(appliedProvider, runtimeChanged)
+                }
             }
         }
     }
 
-    fun setApiKey(key: String) {
+    fun setApiKey(
+        key: String,
+        onApplied: ((appliedProvider: String, runtimeChanged: Boolean) -> Unit)? = null,
+    ) {
         viewModelScope.launch(Dispatchers.IO) {
-            prefs.setApiKey(key)
+            val previousLaunchConfig = prefs.getGatewayLaunchConfigSnapshot()
             val provider = prefs.apiProvider.first()
+            prefs.setApiKey(key)
             syncApiKeyAuthProfile(provider = provider, apiKey = key)
+            val appliedLaunchConfig = prefs.getGatewayLaunchConfigSnapshot()
+            persistLaunchConfigIfRunnable(appliedLaunchConfig)
+            val runtimeChanged = hasRuntimeLaunchConfigChanged(
+                previous = previousLaunchConfig,
+                current = appliedLaunchConfig,
+            )
+            if (onApplied != null) {
+                withContext(Dispatchers.Main) {
+                    onApplied(provider, runtimeChanged)
+                }
+            }
+        }
+    }
+
+    fun setApiKeyForProvider(
+        provider: String,
+        key: String,
+        onApplied: ((appliedProvider: String, runtimeChanged: Boolean) -> Unit)? = null,
+    ) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val previousLaunchConfig = prefs.getGatewayLaunchConfigSnapshot()
+            prefs.setApiKeyForProvider(provider = provider, key = key)
+            syncApiKeyAuthProfile(provider = provider, apiKey = key)
+            val appliedLaunchConfig = prefs.getGatewayLaunchConfigSnapshot()
+            persistLaunchConfigIfRunnable(appliedLaunchConfig)
+            val runtimeChanged = hasRuntimeLaunchConfigChanged(
+                previous = previousLaunchConfig,
+                current = appliedLaunchConfig,
+            )
+            if (onApplied != null) {
+                withContext(Dispatchers.Main) {
+                    onApplied(provider, runtimeChanged)
+                }
+            }
+        }
+    }
+
+    fun getApiKeyForProvider(provider: String, onLoaded: (String) -> Unit) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val key = prefs.getApiKeyForProvider(provider)
+            withContext(Dispatchers.Main) {
+                onLoaded(key)
+            }
         }
     }
 
     fun setSelectedModel(
         model: com.coderred.andclaw.data.OpenRouterModel,
-        onApplied: (() -> Unit)? = null,
+        onApplied: ((appliedProvider: String, runtimeChanged: Boolean) -> Unit)? = null,
     ) {
         viewModelScope.launch(Dispatchers.IO) {
-            prefs.setSelectedModel(model)
-            // config 파일도 업데이트
+            val previousLaunchConfig = prefs.getGatewayLaunchConfigSnapshot()
             val provider = prefs.apiProvider.first()
-            if (provider == "openai-compatible") {
-                prefs.setOpenAiCompatibleModelId(model.id)
-            }
-            val openAiCompatBaseUrl = prefs.openAiCompatibleBaseUrl.first()
-            processManager.ensureOpenClawConfig(
-                apiProvider = provider,
-                selectedModel = model.id,
-                openAiCompatibleBaseUrl = openAiCompatBaseUrl,
-                modelReasoning = model.supportsReasoning,
-                modelImages = model.supportsImages,
-                modelContext = model.contextLength,
-                modelMaxOutput = model.maxOutputTokens,
+            prefs.setSelectedModels(provider = provider, models = listOf(model), primary = model.id)
+            val launchConfig = prefs.getGatewayLaunchConfigSnapshot()
+            persistLaunchConfigIfRunnable(launchConfig)
+            val appliedProvider = prefs.apiProvider.first()
+            val runtimeChanged = hasRuntimeLaunchConfigChanged(
+                previous = previousLaunchConfig,
+                current = launchConfig,
             )
             if (onApplied != null) {
                 withContext(Dispatchers.Main) {
-                    onApplied()
+                    onApplied(appliedProvider, runtimeChanged)
                 }
             }
         }
     }
 
-    fun saveOpenAiCompatibleConfig(apiKey: String, baseUrl: String, modelId: String) {
+    fun applySelectedModels(
+        models: List<OpenRouterModel>,
+        onApplied: ((appliedProvider: String, runtimeChanged: Boolean) -> Unit)? = null,
+    ) {
         viewModelScope.launch(Dispatchers.IO) {
-            prefs.setOpenAiCompatibleBaseUrl(baseUrl)
-            prefs.setApiProvider("openai-compatible")
-            prefs.setApiKey(apiKey)
-            val normalizedModelId = modelId
-                .trim()
-                .removePrefix("openai-compatible/")
-                .ifBlank { "gpt-4o-mini" }
-            val selectedModelMetadata = resolveOpenAiCompatibleModelMetadata(normalizedModelId)
-            prefs.setSelectedModel(selectedModelMetadata)
-            prefs.setOpenAiCompatibleModelId(selectedModelMetadata.id)
-            processManager.ensureOpenClawConfig(
-                apiProvider = "openai-compatible",
-                apiKey = apiKey,
-                selectedModel = normalizedModelId,
-                openAiCompatibleBaseUrl = baseUrl,
-                modelReasoning = selectedModelMetadata.supportsReasoning,
-                modelImages = selectedModelMetadata.supportsImages,
-                modelContext = selectedModelMetadata.contextLength,
-                modelMaxOutput = selectedModelMetadata.maxOutputTokens,
+            _modelLoadError.value = null
+            val previousLaunchConfig = prefs.getGatewayLaunchConfigSnapshot()
+            val provider = prefs.apiProvider.first()
+            val selectedModelProvider = prefs.selectedModelProvider.first()
+            val globalPrimaryModelId = prefs.selectedModel.first()
+            val compatPrimaryModelId = prefs.openAiCompatibleModelId.first()
+            val currentSelectedModelIds = prefs.currentProviderSelectedModelIds.first()
+            if (models.isEmpty()) {
+                prefs.clearSelectedModels(provider)
+            } else {
+                val requestedPrimary = resolveSelectionChangePrimaryDirective(
+                    provider = provider,
+                    appliedModelIds = models.map { it.id },
+                    currentSelectedModelIds = currentSelectedModelIds,
+                    globalPrimaryModelId = globalPrimaryModelId,
+                    globalPrimaryProvider = selectedModelProvider,
+                    openAiCompatibleModelId = compatPrimaryModelId,
+                )
+                prefs.setSelectedModels(
+                    provider = provider,
+                    models = models,
+                    primary = requestedPrimary,
+                )
+            }
+            val launchConfig = prefs.getGatewayLaunchConfigSnapshot()
+            persistLaunchConfigIfRunnable(launchConfig)
+            val appliedProvider = prefs.apiProvider.first()
+            val runtimeChanged = hasRuntimeLaunchConfigChanged(
+                previous = previousLaunchConfig,
+                current = launchConfig,
             )
-            syncApiKeyAuthProfile(provider = "openai-compatible", apiKey = apiKey)
+            if (onApplied != null) {
+                withContext(Dispatchers.Main) {
+                    onApplied(appliedProvider, runtimeChanged)
+                }
+            }
         }
     }
 
-    fun setGptSubscription(useCodexOAuth: Boolean) {
+    fun setGlobalDefaultModel(
+        provider: String,
+        modelId: String,
+        onApplied: ((runtimeChanged: Boolean) -> Unit)? = null,
+    ) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val previousLaunchConfig = prefs.getGatewayLaunchConfigSnapshot()
+            prefs.setGlobalPrimaryModel(provider = provider, modelId = modelId)
+            val appliedLaunchConfig = prefs.getGatewayLaunchConfigSnapshot()
+            persistLaunchConfigIfRunnable(appliedLaunchConfig)
+            val runtimeChanged = hasRuntimeLaunchConfigChanged(
+                previous = previousLaunchConfig,
+                current = appliedLaunchConfig,
+            )
+            if (onApplied != null) {
+                withContext(Dispatchers.Main) {
+                    onApplied(runtimeChanged)
+                }
+            }
+        }
+    }
+
+    fun saveOpenAiCompatibleConfig(
+        apiKey: String,
+        baseUrl: String,
+        modelId: String,
+        activateProvider: Boolean = true,
+        onApplied: ((runtimeChanged: Boolean) -> Unit)? = null,
+    ) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val previousLaunchConfig = prefs.getGatewayLaunchConfigSnapshot()
+            prefs.setOpenAiCompatibleBaseUrl(baseUrl)
+            if (activateProvider) {
+                prefs.setApiProvider("openai-compatible")
+            }
+            val activeProfileId = prefs.activeOpenAiCompatibleProfileId.first()
+            val profiles = prefs.openAiCompatibleProfiles.first()
+            val activeProfile = profiles.firstOrNull { it.id == activeProfileId } ?: profiles.firstOrNull()
+            val currentProvider = prefs.apiProvider.first()
+            val existingSelectedIdsSource = if (activateProvider || currentProvider == "openai-compatible") {
+                prefs.currentProviderSelectedModelIds.first()
+                    .ifEmpty { activeProfile?.selectedModels.orEmpty() }
+            } else {
+                activeProfile?.selectedModels.orEmpty()
+            }
+            val existingSelectedIds = existingSelectedIdsSource
+                .map { it.trim().removePrefix("openai-compatible/") }
+                .filter { it.isNotBlank() }
+                .distinct()
+            val existingPrimaryModelId = activeProfile?.primaryModel
+                .orEmpty()
+                .trim()
+                .removePrefix("openai-compatible/")
+                .takeIf { it.isNotBlank() && existingSelectedIds.contains(it) }
+                ?: prefs.openAiCompatibleModelId.first()
+                    .trim()
+                    .removePrefix("openai-compatible/")
+                    .takeIf { it.isNotBlank() && existingSelectedIds.contains(it) }
+                    .orEmpty()
+            val requestedModelId = modelId
+                .trim()
+                .removePrefix("openai-compatible/")
+            val selectedModelIds = if (requestedModelId.isNotBlank()) {
+                buildList {
+                    add(requestedModelId)
+                    addAll(existingSelectedIds.filterNot { it == requestedModelId })
+                }.distinct()
+            } else {
+                existingSelectedIds.distinct()
+            }
+            val primaryModelId = when {
+                requestedModelId.isNotBlank() -> requestedModelId
+                activateProvider -> ""
+                else -> existingPrimaryModelId
+            }
+            val compatMetadataById = prefs.selectedModelMetadataByProvider.first()["openai-compatible"].orEmpty()
+            val selectedModelsMetadata = selectedModelIds
+                .map { selectedId ->
+                    compatMetadataById[selectedId]?.toOpenRouterModel()
+                        ?: resolveOpenAiCompatibleModelMetadata(selectedId)
+                }
+            if (activateProvider) {
+                prefs.setSelectedModels(
+                    provider = "openai-compatible",
+                    models = selectedModelsMetadata,
+                    primary = primaryModelId,
+                )
+            } else {
+                prefs.setSelectedModelsWithoutActivatingProvider(
+                    provider = "openai-compatible",
+                    models = selectedModelsMetadata,
+                    primary = primaryModelId,
+                )
+            }
+            prefs.setOpenAiCompatibleModelId(primaryModelId)
+            val profileId = activeProfile?.id ?: activeProfileId.ifBlank { "default" }
+            val profileName = activeProfile?.name ?: if (profileId == "default") "Default" else profileId
+            prefs.upsertOpenAiCompatibleProfile(
+                profile = com.coderred.andclaw.data.OpenAiCompatibleProfile(
+                    id = profileId,
+                    name = profileName,
+                    baseUrl = baseUrl,
+                    apiKey = apiKey,
+                    selectedModels = selectedModelIds,
+                    primaryModel = primaryModelId.ifBlank { null },
+                ),
+                activate = true,
+            )
+            prefs.setApiKeyForProvider(provider = "openai-compatible", key = apiKey)
+            val appliedLaunchConfig = prefs.getGatewayLaunchConfigSnapshot()
+            persistLaunchConfigIfRunnable(appliedLaunchConfig)
+            val runtimeChanged = hasRuntimeLaunchConfigChanged(
+                previous = previousLaunchConfig,
+                current = appliedLaunchConfig,
+            )
+            syncApiKeyAuthProfile(provider = "openai-compatible", apiKey = apiKey)
+            if (onApplied != null) {
+                withContext(Dispatchers.Main) {
+                    onApplied(runtimeChanged)
+                }
+            }
+        }
+    }
+
+    fun setGptSubscription(
+        useCodexOAuth: Boolean,
+        onApplied: ((appliedProvider: String, changed: Boolean) -> Unit)? = null,
+    ) {
         viewModelScope.launch(Dispatchers.IO) {
             val provider = if (useCodexOAuth) "openai-codex" else "openai"
-            val modelId = if (useCodexOAuth) "gpt-5.3-codex" else "gpt-5-mini"
+            val previousLaunchConfig = prefs.getGatewayLaunchConfigSnapshot()
 
             prefs.setApiProvider(provider)
-            prefs.setSelectedModelId(modelId)
-
-            processManager.ensureOpenClawConfig(
-                apiProvider = provider,
-                selectedModel = modelId,
-                openAiCompatibleBaseUrl = prefs.openAiCompatibleBaseUrl.first(),
+            promoteGptSubscriptionModelSelection(provider)
+            val appliedProvider = prefs.apiProvider.first()
+            val appliedLaunchConfig = prefs.getGatewayLaunchConfigSnapshot()
+            persistLaunchConfigIfRunnable(appliedLaunchConfig)
+            val runtimeChanged = hasRuntimeLaunchConfigChanged(
+                previous = previousLaunchConfig,
+                current = appliedLaunchConfig,
             )
 
             if (useCodexOAuth) {
@@ -415,7 +610,69 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
                 val openAiApiKey = prefs.apiKey.first()
                 syncApiKeyAuthProfile(provider = "openai", apiKey = openAiApiKey)
             }
+            if (onApplied != null) {
+                withContext(Dispatchers.Main) {
+                    onApplied(appliedProvider, runtimeChanged)
+                }
+            }
         }
+    }
+
+    private fun hasRuntimeLaunchConfigChanged(
+        previous: com.coderred.andclaw.data.GatewayLaunchConfigSnapshot,
+        current: com.coderred.andclaw.data.GatewayLaunchConfigSnapshot,
+    ): Boolean {
+        return previous.apiProvider != current.apiProvider ||
+            previous.apiKey != current.apiKey ||
+            previous.selectedModel != current.selectedModel ||
+            previous.primaryModelId != current.primaryModelId ||
+            previous.openAiCompatibleBaseUrl != current.openAiCompatibleBaseUrl ||
+            previous.selectedModelEntries != current.selectedModelEntries
+    }
+
+    private suspend fun promoteGptSubscriptionModelSelection(provider: String) {
+        if (provider != "openai" && provider != "openai-codex") return
+
+        val selectedModelIds = prefs.currentProviderSelectedModelIds.first()
+        val targetPrimary = prefs.getEffectivePrimary(provider)
+            ?.takeIf { it.isNotBlank() }
+            ?: defaultBuiltInModels(provider)
+            .firstOrNull()
+            ?.id
+            ?: return
+
+        prefs.setSelectedModelIds(
+            provider = provider,
+            modelIds = selectedModelIds
+                .ifEmpty { listOf(targetPrimary) }
+                .let { modelIds ->
+                    if (modelIds.contains(targetPrimary)) {
+                        modelIds
+                    } else {
+                        listOf(targetPrimary) + modelIds
+                    }
+                }
+                .distinct(),
+            primary = targetPrimary,
+        )
+    }
+
+    private fun persistLaunchConfigIfRunnable(
+        launchConfig: com.coderred.andclaw.data.GatewayLaunchConfigSnapshot,
+    ) {
+        if (launchConfig.selectedModelEntries.isEmpty()) return
+        processManager.ensureOpenClawConfig(
+            apiProvider = launchConfig.apiProvider,
+            apiKey = launchConfig.apiKey,
+            selectedModel = launchConfig.selectedModel,
+            selectedModels = launchConfig.selectedModelEntries.map { it.toProcessEntry() },
+            primaryModelId = launchConfig.primaryModelId,
+            openAiCompatibleBaseUrl = launchConfig.openAiCompatibleBaseUrl,
+            modelReasoning = launchConfig.modelReasoning,
+            modelImages = launchConfig.modelImages,
+            modelContext = launchConfig.modelContext,
+            modelMaxOutput = launchConfig.modelMaxOutput,
+        )
     }
 
     fun shouldShowRestartPromptForProvider(provider: String, onResult: (Boolean) -> Unit) {
@@ -427,12 +684,36 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
 
             val shouldShow = when {
                 !isGatewayActive -> false
-                provider == "openrouter" -> true // 무료 모델은 API key 없이도 재시작 필요
+                provider == "openai-compatible" -> true
                 provider == "openai-codex" -> detectCodexAuth()
                 else -> prefs.hasApiKeyForProvider(provider)
             }
             withContext(Dispatchers.Main) {
                 onResult(shouldShow)
+            }
+        }
+    }
+
+    fun shouldShowRestartPromptForRuntimeChange(
+        runtimeChanged: Boolean,
+        onResult: (Boolean) -> Unit,
+    ) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val status = processManager.gatewayState.value.status
+            val isGatewayActive = status == GatewayStatus.RUNNING ||
+                status == GatewayStatus.STARTING ||
+                status == GatewayStatus.ERROR
+            val launchConfig = if (runtimeChanged && isGatewayActive) {
+                prefs.getGatewayLaunchConfigSnapshot()
+            } else {
+                null
+            }
+            val shouldPromptForLaunchChange = shouldPromptForRuntimeLaunchConfigChange(
+                launchConfig = launchConfig,
+                hasCodexAuth = detectCodexAuth(),
+            )
+            withContext(Dispatchers.Main) {
+                onResult(runtimeChanged && isGatewayActive && shouldPromptForLaunchChange)
             }
         }
     }
@@ -470,8 +751,9 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         _isDoctorFixRunning.value = true
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                val provider = prefs.apiProvider.first()
-                val apiKey = prefs.apiKey.first()
+                val launchConfig = prefs.getGatewayLaunchConfigSnapshot()
+                val provider = launchConfig.apiProvider
+                val apiKey = launchConfig.apiKey
                 val braveApiKey = prefs.braveSearchApiKey.first()
                 val memorySearchApiKey = prefs.memorySearchApiKey.first()
                 val channelConfig = prefs.channelConfig.first()
@@ -855,31 +1137,27 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     }
 
     private suspend fun applyMemorySearchConfigAndRestart(forceRestart: Boolean) {
-        val provider = prefs.apiProvider.first()
-        val selectedModel = prefs.selectedModel.first()
-        val openAiCompatibleBaseUrl = prefs.openAiCompatibleBaseUrl.first()
-        val modelReasoning = prefs.selectedModelReasoning.first()
-        val modelImages = prefs.selectedModelImages.first()
-        val modelContext = prefs.selectedModelContext.first()
-        val modelMaxOutput = prefs.selectedModelMaxOutput.first()
-        val memoryEnabled = prefs.memorySearchEnabled.first()
-        val memoryProvider = prefs.memorySearchProvider.first()
-        val memoryApiKey = prefs.memorySearchApiKey.first()
+        val launchConfig = prefs.getGatewayLaunchConfigSnapshot()
 
-        processManager.ensureOpenClawConfig(
-            apiProvider = provider,
-            selectedModel = selectedModel,
-            openAiCompatibleBaseUrl = openAiCompatibleBaseUrl,
-            modelReasoning = modelReasoning,
-            modelImages = modelImages,
-            modelContext = modelContext,
-            modelMaxOutput = modelMaxOutput,
-            memorySearchEnabled = memoryEnabled,
-            memorySearchProvider = memoryProvider,
-            memorySearchApiKey = memoryApiKey,
-        )
+        if (launchConfig.selectedModelEntries.isNotEmpty()) {
+            processManager.ensureOpenClawConfig(
+                apiProvider = launchConfig.apiProvider,
+                apiKey = launchConfig.apiKey,
+                selectedModel = launchConfig.selectedModel,
+                selectedModels = launchConfig.selectedModelEntries.map { it.toProcessEntry() },
+                primaryModelId = launchConfig.primaryModelId,
+                openAiCompatibleBaseUrl = launchConfig.openAiCompatibleBaseUrl,
+                modelReasoning = launchConfig.modelReasoning,
+                modelImages = launchConfig.modelImages,
+                modelContext = launchConfig.modelContext,
+                modelMaxOutput = launchConfig.modelMaxOutput,
+                memorySearchEnabled = launchConfig.memorySearchEnabled,
+                memorySearchProvider = launchConfig.memorySearchProvider,
+                memorySearchApiKey = launchConfig.memorySearchApiKey,
+            )
+        }
         val shouldRestartForMemoryRuntime =
-            memoryEnabled && supportsMemorySearchOverride(memoryProvider)
+            launchConfig.memorySearchEnabled && supportsMemorySearchOverride(launchConfig.memorySearchProvider)
         if (forceRestart || shouldRestartForMemoryRuntime) {
             restartGatewayIfRunning()
         }
@@ -908,9 +1186,16 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
-    fun restartGatewayNow() {
-        val context = getApplication<Application>()
-        GatewayService.restart(context, userInitiated = true)
+    fun applyRuntimeLaunchConfigNow() {
+        viewModelScope.launch(Dispatchers.IO) {
+            val launchConfig = prefs.getGatewayLaunchConfigSnapshot()
+            val context = getApplication<Application>()
+            when (resolveRuntimeLaunchConfigChangeAction(launchConfig, detectCodexAuth())) {
+                RuntimeLaunchConfigChangeAction.RESTART -> GatewayService.restart(context, userInitiated = true)
+                RuntimeLaunchConfigChangeAction.STOP -> GatewayService.stop(context)
+                RuntimeLaunchConfigChangeAction.NONE -> Unit
+            }
+        }
     }
 
     fun restartGatewayIfRunningNow() {
@@ -944,7 +1229,22 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
                         conn.disconnect()
                     }
                 }
-                _availableModels.value = models
+                val persistedSelectedModels = withContext(Dispatchers.IO) {
+                    prefs.currentProviderSelectedModelEntries.first()
+                        .map { entry ->
+                            OpenRouterModel(
+                                id = entry.id,
+                                name = entry.id,
+                                contextLength = entry.contextLength,
+                                maxOutputTokens = entry.maxOutputTokens,
+                                isFree = false,
+                                pricing = "Custom",
+                                supportsReasoning = entry.supportsReasoning,
+                                supportsImages = entry.supportsImages,
+                            )
+                        }
+                }
+                _availableModels.value = (models + persistedSelectedModels).distinctBy { it.id }
             } catch (e: Exception) {
                 if (e is kotlinx.coroutines.CancellationException) throw e
                 _modelLoadError.value = e.message
@@ -968,7 +1268,21 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         viewModelScope.launch {
             try {
                 val models = withContext(Dispatchers.IO) {
-                    loadBuiltInModels(provider)
+                    val builtInModels = loadBuiltInModels(provider)
+                    val persistedSelectedModels = prefs.currentProviderSelectedModelEntries.first()
+                        .map { entry ->
+                            OpenRouterModel(
+                                id = entry.id,
+                                name = entry.id,
+                                contextLength = entry.contextLength,
+                                maxOutputTokens = entry.maxOutputTokens,
+                                isFree = false,
+                                pricing = "Custom",
+                                supportsReasoning = entry.supportsReasoning,
+                                supportsImages = entry.supportsImages,
+                            )
+                        }
+                    (builtInModels + persistedSelectedModels).distinctBy { it.id }
                 }
                 _availableModels.value = models
                 if (models.isEmpty()) {
@@ -1098,6 +1412,29 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
                 supportsReasoning = false,
                 supportsImages = false,
             )
+    }
+
+    private fun SelectedModelConfigEntry.toOpenRouterModel(): OpenRouterModel {
+        return OpenRouterModel(
+            id = id,
+            name = id,
+            contextLength = contextLength,
+            maxOutputTokens = maxOutputTokens,
+            isFree = false,
+            pricing = "Custom",
+            supportsReasoning = supportsReasoning,
+            supportsImages = supportsImages,
+        )
+    }
+
+    private fun SelectedModelConfigEntry.toProcessEntry(): ProcessManager.ModelSelectionEntry {
+        return ProcessManager.ModelSelectionEntry(
+            id = id,
+            supportsReasoning = supportsReasoning,
+            supportsImages = supportsImages,
+            contextLength = contextLength,
+            maxOutputTokens = maxOutputTokens,
+        )
     }
 
     private fun extractProviderModelEntries(content: String, sectionName: String): List<BuiltInModelEntry> {
@@ -2541,4 +2878,83 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
             data = Uri.parse("package:${getApplication<Application>().packageName}")
         }
     }
+}
+
+internal fun canRestartGatewayForRuntimeLaunch(
+    launchConfig: com.coderred.andclaw.data.GatewayLaunchConfigSnapshot?,
+    hasCodexAuth: Boolean,
+): Boolean {
+    return when {
+        launchConfig == null -> false
+        launchConfig.selectedModelEntries.isEmpty() -> false
+        launchConfig.apiProvider == "openai-compatible" ->
+            launchConfig.apiKey.isNotBlank() ||
+                PreferencesManager.isKnownKeylessOpenAiCompatibleBaseUrl(
+                    launchConfig.openAiCompatibleBaseUrl,
+                )
+        launchConfig.apiProvider == "openai-codex" -> hasCodexAuth
+        else -> launchConfig.apiKey.isNotBlank()
+    }
+}
+
+internal enum class RuntimeLaunchConfigChangeAction {
+    NONE,
+    RESTART,
+    STOP,
+}
+
+internal fun resolveRuntimeLaunchConfigChangeAction(
+    launchConfig: com.coderred.andclaw.data.GatewayLaunchConfigSnapshot?,
+    hasCodexAuth: Boolean,
+): RuntimeLaunchConfigChangeAction {
+    return when {
+        launchConfig == null -> RuntimeLaunchConfigChangeAction.NONE
+        launchConfig.selectedModelEntries.isEmpty() -> RuntimeLaunchConfigChangeAction.STOP
+        canRestartGatewayForRuntimeLaunch(launchConfig, hasCodexAuth) -> RuntimeLaunchConfigChangeAction.RESTART
+        else -> RuntimeLaunchConfigChangeAction.STOP
+    }
+}
+
+internal fun shouldPromptForRuntimeLaunchConfigChange(
+    launchConfig: com.coderred.andclaw.data.GatewayLaunchConfigSnapshot?,
+    hasCodexAuth: Boolean,
+): Boolean {
+    return resolveRuntimeLaunchConfigChangeAction(launchConfig, hasCodexAuth) != RuntimeLaunchConfigChangeAction.NONE
+}
+
+internal fun resolveSelectionChangePrimaryDirective(
+    provider: String,
+    appliedModelIds: List<String>,
+    currentSelectedModelIds: List<String>,
+    globalPrimaryModelId: String,
+    globalPrimaryProvider: String,
+    openAiCompatibleModelId: String,
+): String? {
+    val normalizedProvider = provider.trim().lowercase()
+    val normalize: (String) -> String = { modelId ->
+        if (normalizedProvider == "openai-compatible") {
+            modelId.trim().removePrefix("openai-compatible/")
+        } else {
+            modelId.trim()
+        }
+    }
+    val normalizedAppliedIds = appliedModelIds.map(normalize).filter { it.isNotBlank() }.toSet()
+    val normalizedCurrentIds = currentSelectedModelIds.map(normalize).filter { it.isNotBlank() }.toSet()
+    if (normalizedAppliedIds == normalizedCurrentIds) return null
+
+    val normalizedGlobalPrimary = normalize(globalPrimaryModelId)
+    val globalPrimaryRemoved =
+        globalPrimaryProvider.trim().lowercase() == normalizedProvider &&
+            normalizedGlobalPrimary.isNotBlank() &&
+            normalizedCurrentIds.contains(normalizedGlobalPrimary) &&
+            !normalizedAppliedIds.contains(normalizedGlobalPrimary)
+    if (globalPrimaryRemoved) return ""
+
+    val compatPrimary = openAiCompatibleModelId.trim().removePrefix("openai-compatible/")
+    val compatPrimaryRemoved =
+        normalizedProvider == "openai-compatible" &&
+            compatPrimary.isNotBlank() &&
+            normalizedCurrentIds.contains(compatPrimary) &&
+            !normalizedAppliedIds.contains(compatPrimary)
+    return if (compatPrimaryRemoved) "" else null
 }

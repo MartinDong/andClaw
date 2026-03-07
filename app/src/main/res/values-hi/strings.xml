@@ -105,6 +105,7 @@
     <string name="settings_api_key">API कुंजी</string>
     <string name="settings_api_key_configured">कॉन्फ़िगर किया गया</string>
     <string name="settings_api_key_not_configured">कॉन्फ़िगर नहीं किया गया</string>
+    <string name="settings_api_key_not_required">आवश्यक नहीं</string>
     <string name="settings_api_key_hint">अपनी API कुंजी दर्ज करें</string>
     <string name="settings_api_key_save">सहेजें</string>
     <string name="settings_api_key_cancel">रद्द करें</string>
@@ -112,7 +113,12 @@
     <string name="settings_restart_confirm_message">क्या अभी गेटवे पुनः आरंभ करें?</string>
     <string name="settings_restart_confirm_yes">हाँ</string>
     <string name="settings_restart_confirm_no">नहीं</string>
-<string name="settings_select_model">मॉडल चुनें</string>
+    <string name="settings_select_model">मॉडल चुनें</string>
+
+    <string name="settings_default_model_label">डिफ़ॉल्ट मॉडल</string>
+    <string name="settings_default_model_none">कोई डिफ़ॉल्ट मॉडल चुना नहीं गया</string>
+    <string name="settings_tab_model">मॉडल</string>
+
     <string name="settings_model_default">डिफ़ॉल्ट (Auto Select Free)</string>
     <string name="settings_model_restart_hint">नए मॉडल को लागू करने के लिए गेटवे को पुनः शुरू करें</string>
     <string name="settings_model_loading">मॉडल लोड किए जा रहे हैं…</string>
@@ -122,6 +128,7 @@
     <string name="settings_model_close">बंद करें</string>
     <string name="settings_model_section_free">निःशुल्क</string>
     <string name="settings_model_free_warning">मुफ़्त मॉडल उच्च मांग के दौरान धीमे या अनुत्तरदायी हो सकते हैं</string>
+    <string name="settings_model_selection_guide">आप उपयोग के लिए मॉडल चुन सकते हैं, या सूची खाली छोड़ सकते हैं। आप चाहें तो चुने गए मॉडलों में से एक को डिफ़ॉल्ट मॉडल के रूप में सेट कर सकते हैं।</string>
     <string name="settings_model_section_paid">भुगतान</string>
     <string name="settings_section_about">के बारे में</string>
     <string name="settings_disclaimer">यह ऐप एक आधिकारिक OpenClaw ऐप नहीं है</string>

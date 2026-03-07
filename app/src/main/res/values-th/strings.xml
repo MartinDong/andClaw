@@ -105,6 +105,7 @@
     <string name="settings_api_key">API Key</string>
     <string name="settings_api_key_configured">ตั้งค่าแล้ว</string>
     <string name="settings_api_key_not_configured">ยังไม่ได้ตั้งค่า</string>
+    <string name="settings_api_key_not_required">ไม่จำเป็น</string>
     <string name="settings_api_key_hint">ป้อน API key ของคุณ</string>
     <string name="settings_api_key_save">บันทึก</string>
     <string name="settings_api_key_cancel">ยกเลิก</string>
@@ -112,7 +113,12 @@
     <string name="settings_restart_confirm_message">รีสตาร์ทเกตเวย์ตอนนี้หรือไม่?</string>
     <string name="settings_restart_confirm_yes">ใช่</string>
     <string name="settings_restart_confirm_no">ไม่</string>
-<string name="settings_select_model">เลือกโมเดล</string>
+    <string name="settings_select_model">เลือกโมเดล</string>
+
+    <string name="settings_default_model_label">โมเดลเริ่มต้น</string>
+    <string name="settings_default_model_none">ยังไม่ได้เลือกโมเดลเริ่มต้น</string>
+    <string name="settings_tab_model">โมเดล</string>
+
     <string name="settings_model_default">ค่าเริ่มต้น (Auto Select Free)</string>
     <string name="settings_model_restart_hint">เริ่มต้น gateway ใหม่เพื่อใช้โมเดลใหม่</string>
     <string name="settings_model_loading">กำลังโหลดโมเดล…</string>
@@ -122,6 +128,7 @@
     <string name="settings_model_close">ปิด</string>
     <string name="settings_model_section_free">ฟรี</string>
     <string name="settings_model_free_warning">โมเดลฟรีอาจช้าหรือไม่ตอบสนองในช่วงที่มีความต้องการสูง</string>
+    <string name="settings_model_selection_guide">คุณสามารถเลือกโมเดลที่จะใช้ หรือปล่อยรายการว่างไว้ก็ได้ และหากต้องการยังสามารถตั้งหนึ่งในโมเดลที่เลือกเป็นโมเดลเริ่มต้นได้</string>
     <string name="settings_model_section_paid">ที่เสียค่าใช้</string>
     <string name="settings_section_about">เกี่ยวกับ</string>
     <string name="settings_disclaimer">แอปนี้ไม่ใช่แอปอย่างเป็นทางการของ OpenClaw</string>

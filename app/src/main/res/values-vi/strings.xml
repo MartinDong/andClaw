@@ -105,6 +105,7 @@
     <string name="settings_api_key">Khóa API</string>
     <string name="settings_api_key_configured">Đã cấu hình</string>
     <string name="settings_api_key_not_configured">Chưa cấu hình</string>
+    <string name="settings_api_key_not_required">Không bắt buộc</string>
     <string name="settings_api_key_hint">Nhập khóa API của bạn</string>
     <string name="settings_api_key_save">Lưu</string>
     <string name="settings_api_key_cancel">Hủy</string>
@@ -112,7 +113,12 @@
     <string name="settings_restart_confirm_message">Khởi động lại gateway ngay bây giờ?</string>
     <string name="settings_restart_confirm_yes">Có</string>
     <string name="settings_restart_confirm_no">Không</string>
-<string name="settings_select_model">Chọn mô hình</string>
+    <string name="settings_select_model">Chọn mô hình</string>
+
+    <string name="settings_default_model_label">Mô hình mặc định</string>
+    <string name="settings_default_model_none">Chưa chọn mô hình mặc định</string>
+    <string name="settings_tab_model">Mô hình</string>
+
     <string name="settings_model_default">Mặc định (Auto Select Free)</string>
     <string name="settings_model_restart_hint">Khởi động lại cổng để áp dụng mô hình mới</string>
     <string name="settings_model_loading">Đang tải mô hình…</string>
@@ -122,6 +128,7 @@
     <string name="settings_model_close">Đóng</string>
     <string name="settings_model_section_free">Miễn phí</string>
     <string name="settings_model_free_warning">Mô hình miễn phí có thể chậm hoặc không phản hồi khi nhu cầu cao</string>
+    <string name="settings_model_selection_guide">Bạn có thể chọn các mô hình để sử dụng hoặc để danh sách trống. Bạn cũng có thể đặt một mô hình đã chọn làm mô hình mặc định.</string>
     <string name="settings_model_section_paid">Trả phí</string>
     <string name="settings_section_about">Về ứng dụng</string>
     <string name="settings_disclaimer">Ứng dụng này không phải là ứng dụng chính thức của OpenClaw</string>

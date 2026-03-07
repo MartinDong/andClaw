@@ -111,6 +111,7 @@
     <string name="settings_api_key">API-Schlüssel</string>
     <string name="settings_api_key_configured">Konfiguriert</string>
     <string name="settings_api_key_not_configured">Nicht konfiguriert</string>
+    <string name="settings_api_key_not_required">Nicht erforderlich</string>
     <string name="settings_api_key_hint">API-Schlüssel eingeben</string>
     <string name="settings_api_key_save">Speichern</string>
     <string name="settings_api_key_cancel">Abbrechen</string>
@@ -118,7 +119,12 @@
     <string name="settings_restart_confirm_message">Gateway jetzt neu starten?</string>
     <string name="settings_restart_confirm_yes">Ja</string>
     <string name="settings_restart_confirm_no">Nein</string>
-<string name="settings_select_model">Modell auswählen</string>
+    <string name="settings_select_model">Modell auswählen</string>
+
+    <string name="settings_default_model_label">Standardmodell</string>
+    <string name="settings_default_model_none">Kein Standardmodell ausgewählt</string>
+    <string name="settings_tab_model">Modell</string>
+
     <string name="settings_model_default">Standard (Auto Select Free)</string>
     <string name="settings_model_restart_hint">Starten Sie das Gateway neu, um das neue Modell anzuwenden</string>
     <string name="settings_model_loading">Modelle werden geladen…</string>
@@ -128,6 +134,7 @@
     <string name="settings_model_close">Schließen</string>
     <string name="settings_model_section_free">Kostenlos</string>
     <string name="settings_model_free_warning">Kostenlose Modelle können bei hoher Nachfrage langsam oder nicht erreichbar sein</string>
+    <string name="settings_model_selection_guide">Sie können Modelle zur Nutzung auswählen oder die Liste leer lassen. Außerdem können Sie eines der ausgewählten Modelle als Standardmodell festlegen.</string>
     <string name="settings_model_section_paid">Kostenpflichtig</string>
     <string name="settings_section_about">Über</string>
     <string name="settings_disclaimer">Diese App ist keine offizielle OpenClaw-App</string>

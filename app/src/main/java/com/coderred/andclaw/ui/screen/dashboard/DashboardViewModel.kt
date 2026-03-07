@@ -13,6 +13,7 @@ import com.coderred.andclaw.R
 import com.coderred.andclaw.data.ChannelConfig
 import com.coderred.andclaw.data.GatewayState
 import com.coderred.andclaw.data.GatewayStatus
+import com.coderred.andclaw.data.LaunchApiKeyWarning
 import com.coderred.andclaw.data.PairingRequest
 import com.coderred.andclaw.data.SetupState
 import com.coderred.andclaw.data.SessionLogEntry
@@ -147,6 +148,7 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
 
     init {
         viewModelScope.launch(Dispatchers.IO) {
+            app.preferencesManager.backfillSelectedModelProviderIfMissing()
             // 앱 시작 시 로그 섹션은 기본 잠금 상태로 초기화한다.
             app.preferencesManager.setLogSectionUnlocked(false)
         }
@@ -163,6 +165,19 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
 
     fun startGateway() {
         GatewayService.start(getApplication())
+    }
+
+    fun getLaunchApiKeyWarning(onResult: (LaunchApiKeyWarning) -> Unit) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val warning = app.preferencesManager.getLaunchApiKeyWarning()
+            withContext(Dispatchers.Main) {
+                onResult(warning)
+            }
+        }
+    }
+
+    fun stopGatewayForMissingModelSelection() {
+        GatewayService.stopForMissingModelSelection(getApplication())
     }
 
     fun stopGateway() {

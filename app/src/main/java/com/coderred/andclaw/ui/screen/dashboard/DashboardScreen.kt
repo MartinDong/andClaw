@@ -100,7 +100,6 @@ import com.coderred.andclaw.data.GatewayStatus
 import com.coderred.andclaw.data.PairingRequest
 import com.coderred.andclaw.proot.BundleUpdateFailureState
 import com.coderred.andclaw.ui.component.KeepScreenOnEffect
-import com.coderred.andclaw.ui.component.ModelSelectionDialog
 import com.coderred.andclaw.ui.component.SessionLogsDialog
 import com.coderred.andclaw.ui.theme.StatusError
 import com.coderred.andclaw.ui.theme.StatusRunning
@@ -113,7 +112,7 @@ import java.util.Locale
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DashboardScreen(
-    onNavigateToSettings: () -> Unit,
+    onNavigateToSettings: (String?) -> Unit,
     viewModel: DashboardViewModel = viewModel(),
 ) {
     val gatewayUiState by viewModel.gatewayUiState.collectAsState()
@@ -121,13 +120,7 @@ fun DashboardScreen(
     val batteryLevel by viewModel.batteryLevel.collectAsState()
     val isCharging by viewModel.isCharging.collectAsState()
     val memoryUsageMb by viewModel.memoryUsageMb.collectAsState()
-    val apiProvider by viewModel.apiProvider.collectAsState()
-    val apiKey by viewModel.apiKey.collectAsState()
-    val selectedModel by viewModel.selectedModel.collectAsState()
     val isLogSectionUnlocked by viewModel.isLogSectionUnlocked.collectAsState()
-    val availableModels by viewModel.availableModels.collectAsState()
-    val isLoadingModels by viewModel.isLoadingModels.collectAsState()
-    val modelLoadError by viewModel.modelLoadError.collectAsState()
     val pairingRequests by viewModel.pairingRequests.collectAsState()
     val pairingActionProgress by viewModel.pairingActionProgress.collectAsState()
     val sessionLogs by viewModel.sessionLogs.collectAsState()
@@ -140,8 +133,8 @@ fun DashboardScreen(
     val context = LocalContext.current
     KeepScreenOnEffect(enabled = bundleActionInProgress)
 
-    var showModelDialog by remember { mutableStateOf(false) }
     var showApiKeyWarning by remember { mutableStateOf(false) }
+    var apiKeyWarningProvider by remember { mutableStateOf<String?>(null) }
     var showSessionLogs by remember { mutableStateOf(false) }
     var logsExpanded by rememberSaveable { mutableStateOf(false) }
 
@@ -154,16 +147,35 @@ fun DashboardScreen(
     }
 
     val requestStartGateway: () -> Unit = {
-        val apiKeyRequired = apiProvider != "openai-codex"
-        if (apiKeyRequired && apiKey.isBlank()) {
-            showApiKeyWarning = true
-        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
-            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS)
-            != PackageManager.PERMISSION_GRANTED
-        ) {
-            notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-        } else {
-            viewModel.startGateway()
+        viewModel.getLaunchApiKeyWarning { warning ->
+            when (
+                resolveDashboardStartAction(
+                    warning = warning,
+                    shouldRequestNotificationPermission =
+                        Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                            ContextCompat.checkSelfPermission(
+                                context,
+                                Manifest.permission.POST_NOTIFICATIONS,
+                            ) != PackageManager.PERMISSION_GRANTED,
+                )
+            ) {
+                is DashboardStartAction.ShowNoModelsNotice -> {
+                    viewModel.stopGatewayForMissingModelSelection()
+                }
+
+                is DashboardStartAction.ShowApiKeyWarning -> {
+                    apiKeyWarningProvider = warning.provider
+                    showApiKeyWarning = true
+                }
+
+                is DashboardStartAction.RequestNotificationPermission -> {
+                    notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                }
+
+                is DashboardStartAction.StartGateway -> {
+                    viewModel.startGateway()
+                }
+            }
         }
     }
 
@@ -183,7 +195,7 @@ fun DashboardScreen(
                     containerColor = Color.Transparent,
                 ),
                 actions = {
-                    IconButton(onClick = onNavigateToSettings) {
+                    IconButton(onClick = { onNavigateToSettings(null) }) {
                         Icon(
                             Icons.Default.Settings,
                             contentDescription = stringResource(R.string.dashboard_cd_settings),
@@ -216,17 +228,6 @@ fun DashboardScreen(
                 verticalArrangement = Arrangement.spacedBy(16.dp),
             ) {
                 Spacer(modifier = Modifier.height(4.dp))
-
-                // ── Model Banner (openrouter) ──
-                if (apiProvider == "openrouter") {
-                    ModelBanner(
-                        selectedModel = selectedModel,
-                        onClick = {
-                            showModelDialog = true
-                            viewModel.fetchModels()
-                        },
-                    )
-                }
 
                 bundleUpdateFailure?.let { failure ->
                     BundleUpdateFailureBanner(
@@ -274,21 +275,6 @@ fun DashboardScreen(
         }
     }
 
-    if (showModelDialog) {
-        ModelSelectionDialog(
-            models = availableModels,
-            selectedModelId = selectedModel,
-            isLoading = isLoadingModels,
-            errorMessage = modelLoadError,
-            onSelectModel = { model ->
-                viewModel.setSelectedModel(model)
-                showModelDialog = false
-            },
-            onDismiss = { showModelDialog = false },
-            onRetry = { viewModel.fetchModels() },
-        )
-    }
-
     if (showSessionLogs) {
         SessionLogsDialog(
             entries = sessionLogs,
@@ -298,21 +284,56 @@ fun DashboardScreen(
     }
 
     if (showApiKeyWarning) {
+        val warningProviderLabel = apiKeyWarningProvider?.let { provider ->
+            when (provider) {
+                "openrouter" -> stringResource(R.string.onboarding_provider_openrouter)
+                "anthropic" -> stringResource(R.string.onboarding_provider_anthropic)
+                "openai" -> stringResource(
+                    R.string.settings_provider_openai_api,
+                    stringResource(R.string.onboarding_provider_openai),
+                )
+                "openai-codex" -> stringResource(
+                    R.string.settings_provider_openai_codex,
+                    stringResource(R.string.onboarding_provider_openai),
+                )
+                "openai-compatible" -> stringResource(R.string.onboarding_provider_openai_compatible)
+                "google" -> stringResource(R.string.onboarding_provider_google)
+                else -> provider
+            }
+        }
         AlertDialog(
-            onDismissRequest = { showApiKeyWarning = false },
+            onDismissRequest = {
+                showApiKeyWarning = false
+                apiKeyWarningProvider = null
+            },
             shape = RoundedCornerShape(24.dp),
             title = { Text(stringResource(R.string.dashboard_apikey_required_title)) },
-            text = { Text(stringResource(R.string.dashboard_apikey_required_message)) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(stringResource(R.string.dashboard_apikey_required_message))
+                    if (!warningProviderLabel.isNullOrBlank()) {
+                        Text(
+                            text = warningProviderLabel,
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                    }
+                }
+            },
             confirmButton = {
                 TextButton(onClick = {
                     showApiKeyWarning = false
-                    onNavigateToSettings()
+                    onNavigateToSettings(apiKeyWarningProvider)
+                    apiKeyWarningProvider = null
                 }) {
                     Text(stringResource(R.string.dashboard_apikey_go_settings))
                 }
             },
             dismissButton = {
-                TextButton(onClick = { showApiKeyWarning = false }) {
+                TextButton(onClick = {
+                    showApiKeyWarning = false
+                    apiKeyWarningProvider = null
+                }) {
                     Text(stringResource(R.string.dashboard_apikey_dismiss))
                 }
             },
@@ -345,6 +366,25 @@ fun DashboardScreen(
             downloadedBytes = setupState.downloadedBytes,
             totalBytes = setupState.totalBytes,
         )
+    }
+}
+
+internal sealed interface DashboardStartAction {
+    data object ShowNoModelsNotice : DashboardStartAction
+    data object RequestNotificationPermission : DashboardStartAction
+    data object StartGateway : DashboardStartAction
+    data class ShowApiKeyWarning(val provider: String) : DashboardStartAction
+}
+
+internal fun resolveDashboardStartAction(
+    warning: com.coderred.andclaw.data.LaunchApiKeyWarning,
+    shouldRequestNotificationPermission: Boolean,
+): DashboardStartAction {
+    return when {
+        !warning.hasSelectedModels -> DashboardStartAction.ShowNoModelsNotice
+        warning.shouldWarn -> DashboardStartAction.ShowApiKeyWarning(warning.provider)
+        shouldRequestNotificationPermission -> DashboardStartAction.RequestNotificationPermission
+        else -> DashboardStartAction.StartGateway
     }
 }
 
@@ -540,14 +580,26 @@ private fun StatusHero(
             // Error chip
             if (errorMessage != null) {
                 Spacer(modifier = Modifier.height(8.dp))
+                val noticeContainerColor =
+                    if (status == GatewayStatus.ERROR) {
+                        MaterialTheme.colorScheme.errorContainer
+                    } else {
+                        MaterialTheme.colorScheme.secondaryContainer
+                    }
+                val noticeContentColor =
+                    if (status == GatewayStatus.ERROR) {
+                        MaterialTheme.colorScheme.onErrorContainer
+                    } else {
+                        MaterialTheme.colorScheme.onSecondaryContainer
+                    }
                 Surface(
                     shape = RoundedCornerShape(12.dp),
-                    color = MaterialTheme.colorScheme.errorContainer,
+                    color = noticeContainerColor,
                 ) {
                     Text(
                         text = errorMessage,
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onErrorContainer,
+                        color = noticeContentColor,
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
@@ -635,74 +687,6 @@ private fun StatusHero(
                 }
                 else -> { /* Stopping — no buttons */ }
             }
-        }
-    }
-}
-
-// ── Model Banner ──
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun ModelBanner(
-    selectedModel: String,
-    onClick: () -> Unit,
-) {
-    Card(
-        onClick = onClick,
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.secondaryContainer,
-        ),
-    ) {
-        Row(
-            modifier = Modifier.padding(20.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Surface(
-                shape = RoundedCornerShape(14.dp),
-                color = MaterialTheme.colorScheme.secondary,
-                modifier = Modifier.size(48.dp),
-            ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Icon(
-                        Icons.Default.Psychology,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onSecondary,
-                        modifier = Modifier.size(26.dp),
-                    )
-                }
-            }
-            Spacer(modifier = Modifier.width(16.dp))
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = stringResource(R.string.dashboard_model_label),
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.7f),
-                )
-                Spacer(modifier = Modifier.height(2.dp))
-                Text(
-                    text = if (selectedModel.isNotBlank()) {
-                        selectedModel
-                            .removePrefix("openrouter/")
-                            .removeSuffix(":free")
-                    } else {
-                        stringResource(R.string.settings_model_default)
-                    },
-                    style = MaterialTheme.typography.titleMedium.copy(
-                        fontWeight = FontWeight.SemiBold,
-                    ),
-                    color = MaterialTheme.colorScheme.onSecondaryContainer,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-            Icon(
-                Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.5f),
-                modifier = Modifier.size(24.dp),
-            )
         }
     }
 }

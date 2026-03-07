@@ -105,6 +105,7 @@
     <string name="settings_api_key">Kunci API</string>
     <string name="settings_api_key_configured">Dikonfigurasi</string>
     <string name="settings_api_key_not_configured">Tidak dikonfigurasi</string>
+    <string name="settings_api_key_not_required">Tidak wajib</string>
     <string name="settings_api_key_hint">Masukkan kunci API Anda</string>
     <string name="settings_api_key_save">Simpan</string>
     <string name="settings_api_key_cancel">Batal</string>
@@ -112,7 +113,12 @@
     <string name="settings_restart_confirm_message">Mulai ulang gateway sekarang?</string>
     <string name="settings_restart_confirm_yes">Ya</string>
     <string name="settings_restart_confirm_no">Tidak</string>
-<string name="settings_select_model">Pilih model</string>
+    <string name="settings_select_model">Pilih model</string>
+
+    <string name="settings_default_model_label">Model default</string>
+    <string name="settings_default_model_none">Belum ada model default yang dipilih</string>
+    <string name="settings_tab_model">Model</string>
+
     <string name="settings_model_default">Default (Auto Select Free)</string>
     <string name="settings_model_restart_hint">Mulai ulang gateway untuk menerapkan model baru</string>
     <string name="settings_model_loading">Memuat model…</string>
@@ -122,6 +128,7 @@
     <string name="settings_model_close">Tutup</string>
     <string name="settings_model_section_free">Gratis</string>
     <string name="settings_model_free_warning">Model gratis mungkin lambat atau tidak responsif saat permintaan tinggi</string>
+    <string name="settings_model_selection_guide">Anda dapat memilih model untuk digunakan, atau membiarkan daftar kosong. Anda juga dapat menetapkan salah satu model yang dipilih sebagai model default.</string>
     <string name="settings_model_section_paid">Berbayar</string>
     <string name="settings_section_about">Tentang</string>
     <string name="settings_disclaimer">Aplikasi ini bukan aplikasi OpenClaw resmi</string>

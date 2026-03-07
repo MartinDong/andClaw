@@ -51,6 +51,8 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
+import androidx.compose.material3.Tab
+import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -84,6 +86,9 @@ import com.coderred.andclaw.data.BugReportEmailIntentBuilder
 import com.coderred.andclaw.data.SetupStep
 import com.coderred.andclaw.data.BugReportEmailMetadata
 import com.coderred.andclaw.data.BugReportEmailSummary
+import com.coderred.andclaw.data.PreferencesManager
+import com.coderred.andclaw.ui.component.DefaultModelDialogOption
+import com.coderred.andclaw.ui.component.DefaultModelSelectionDialog
 import com.coderred.andclaw.ui.component.KeepScreenOnEffect
 import com.coderred.andclaw.ui.component.ModelSelectionDialog
 import com.coderred.andclaw.ui.component.WhatsAppQrDialog
@@ -97,6 +102,8 @@ import kotlinx.coroutines.isActive
 @Composable
 fun SettingsScreen(
     onBack: () -> Unit,
+    initialApiProvider: String? = null,
+    openApiKeyDialogOnLaunch: Boolean = false,
     viewModel: SettingsViewModel = viewModel(),
 ) {
     val autoStartOnBoot by viewModel.autoStartOnBoot.collectAsState()
@@ -104,7 +111,11 @@ fun SettingsScreen(
     val apiProvider by viewModel.apiProvider.collectAsState()
     val apiKey by viewModel.apiKey.collectAsState()
     val openAiCompatibleBaseUrl by viewModel.openAiCompatibleBaseUrl.collectAsState()
+    val openAiCompatibleModelId by viewModel.openAiCompatibleModelId.collectAsState()
     val selectedModel by viewModel.selectedModel.collectAsState()
+    val selectedModelProvider by viewModel.selectedModelProvider.collectAsState()
+    val selectedModelIds by viewModel.currentProviderSelectedModelIds.collectAsState()
+    val globalDefaultModelOptions by viewModel.globalDefaultModelOptions.collectAsState()
     val availableModels by viewModel.availableModels.collectAsState()
     val isLoadingModels by viewModel.isLoadingModels.collectAsState()
     val modelLoadError by viewModel.modelLoadError.collectAsState()
@@ -141,17 +152,29 @@ fun SettingsScreen(
     val bugReportUiState by viewModel.bugReportUiState.collectAsState()
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
-    val isOpenAiProviderFamily = apiProvider == "openai" || apiProvider == "openai-codex"
     val openAiProviderLabel = stringResource(R.string.onboarding_provider_openai)
-    val selectedModelDisplay = when {
-        selectedModel.isBlank() -> stringResource(R.string.settings_model_default)
-        apiProvider == "openai-compatible" -> selectedModel
-        selectedModel.startsWith("openrouter/") -> selectedModel.removePrefix("openrouter/")
-        selectedModel.startsWith("anthropic/") -> selectedModel.removePrefix("anthropic/")
-        selectedModel.startsWith("openai-codex/") -> selectedModel.removePrefix("openai-codex/")
-        selectedModel.startsWith("openai/") -> selectedModel.removePrefix("openai/")
-        selectedModel.startsWith("google/") -> selectedModel.removePrefix("google/")
-        else -> selectedModel
+    val providerLabelFor: (String) -> String = { provider ->
+        when (provider) {
+            "openrouter" -> context.getString(R.string.onboarding_provider_openrouter)
+            "anthropic" -> context.getString(R.string.onboarding_provider_anthropic)
+            "openai" -> context.getString(R.string.settings_provider_openai_api, openAiProviderLabel)
+            "openai-codex" -> context.getString(R.string.settings_provider_openai_codex, openAiProviderLabel)
+            "openai-compatible" -> context.getString(R.string.onboarding_provider_openai_compatible)
+            "google" -> context.getString(R.string.onboarding_provider_google)
+            else -> provider
+        }
+    }
+    val defaultModelOptionsUi = globalDefaultModelOptions.map { option ->
+        DefaultModelDialogOption(
+            provider = option.provider,
+            providerLabel = providerLabelFor(option.provider),
+            modelId = option.modelId,
+            displayModelId = formatSelectedModelLabel(option.provider, option.modelId),
+        )
+    }
+    val defaultModelDisplay = when {
+        selectedModel.isBlank() || selectedModelProvider.isBlank() -> stringResource(R.string.settings_default_model_none)
+        else -> "${providerLabelFor(selectedModelProvider)} · ${formatSelectedModelLabel(selectedModelProvider, selectedModel)}"
     }
     val memorySearchProviderDisplay = when (memorySearchProvider) {
         "openai" -> stringResource(R.string.settings_memory_search_provider_openai)
@@ -161,10 +184,16 @@ fun SettingsScreen(
         "local" -> stringResource(R.string.settings_memory_search_provider_local)
         else -> stringResource(R.string.settings_memory_search_provider_auto)
     }
+    val settingsTabs = listOf(
+        stringResource(R.string.settings_section_gateway),
+        stringResource(R.string.settings_tab_model),
+        stringResource(R.string.settings_section_channels),
+        stringResource(R.string.settings_section_tools),
+    )
 
     var showModelDialog by remember { mutableStateOf(false) }
+    var showDefaultModelDialog by remember { mutableStateOf(false) }
     var showProviderDialog by remember { mutableStateOf(false) }
-    var showGptSubscriptionDialog by remember { mutableStateOf(false) }
     var showApiKeyDialog by remember { mutableStateOf(false) }
     var showRestartHint by remember { mutableStateOf(false) }
     var showBotRestartNotice by remember { mutableStateOf(false) }
@@ -178,6 +207,12 @@ fun SettingsScreen(
     var showRecoveryInstallConfirmDialog by remember { mutableStateOf(false) }
     var showOpenClawUpdateConfirmDialog by remember { mutableStateOf(false) }
     var showWhatsAppActionDialog by remember { mutableStateOf(false) }
+    var pendingApiKeyProvider by remember(initialApiProvider, openApiKeyDialogOnLaunch) {
+        mutableStateOf(initialApiProvider?.takeIf { openApiKeyDialogOnLaunch })
+    }
+    var apiKeyDialogProviderOverride by remember { mutableStateOf<String?>(null) }
+    var apiKeyDialogCurrentKeyOverride by remember { mutableStateOf<String?>(null) }
+    var selectedSettingsTabIndex by remember { mutableStateOf(0) }
     val isMaintenanceBusy = isDoctorFixRunning || isRecoveryInstallRunning || isOpenClawUpdateRunning
     val openClawVersionInfoText = if (!installedOpenClawVersion.isNullOrBlank() && !bundledOpenClawVersion.isNullOrBlank()) {
         if (isOpenClawUpdateAvailable) {
@@ -231,6 +266,19 @@ fun SettingsScreen(
         }
     }
 
+    LaunchedEffect(pendingApiKeyProvider) {
+        val targetProvider = pendingApiKeyProvider ?: return@LaunchedEffect
+        selectedSettingsTabIndex = 0
+        viewModel.setApiProvider(targetProvider) { appliedProvider, _ ->
+            viewModel.getApiKeyForProvider(appliedProvider) { currentKey ->
+                apiKeyDialogProviderOverride = appliedProvider
+                apiKeyDialogCurrentKeyOverride = currentKey
+                showApiKeyDialog = true
+                pendingApiKeyProvider = null
+            }
+        }
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -251,485 +299,524 @@ fun SettingsScreen(
                 .padding(horizontal = 20.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            // ══════════════════════════════════════
-            // Gateway 섹션
-            // ══════════════════════════════════════
-            SectionHeader(
-                title = stringResource(R.string.settings_section_gateway),
-                icon = Icons.Default.PowerSettingsNew,
-            )
-
-            Card(
+            TabRow(
+                selectedTabIndex = selectedSettingsTabIndex,
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(20.dp),
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                ),
             ) {
-                Column {
-                    SettingToggle(
-                        title = stringResource(R.string.settings_auto_start),
-                        description = stringResource(R.string.settings_auto_start_desc),
-                        checked = autoStartOnBoot,
-                        onCheckedChange = viewModel::setAutoStartOnBoot,
-                    )
-                    HorizontalDivider(
-                        modifier = Modifier.padding(horizontal = 20.dp),
-                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
-                    )
-                    SettingToggle(
-                        title = stringResource(R.string.settings_charge_only),
-                        description = stringResource(R.string.settings_charge_only_desc),
-                        checked = chargeOnlyMode,
-                        onCheckedChange = viewModel::setChargeOnlyMode,
+                settingsTabs.forEachIndexed { index, title ->
+                    Tab(
+                        selected = selectedSettingsTabIndex == index,
+                        onClick = { selectedSettingsTabIndex = index },
+                        text = {
+                            Text(
+                                text = title,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        },
                     )
                 }
             }
 
-            // ══════════════════════════════════════
-            // Battery 섹션
-            // ══════════════════════════════════════
-            SectionHeader(
-                title = stringResource(R.string.settings_section_battery),
-                icon = Icons.Default.BatteryAlert,
-            )
+            if (selectedSettingsTabIndex == 0) {
+                // ══════════════════════════════════════
+                // Gateway 섹션
+                // ══════════════════════════════════════
+                SectionHeader(
+                    title = stringResource(R.string.settings_section_gateway),
+                    icon = Icons.Default.PowerSettingsNew,
+                )
 
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable {
-                        try {
-                            context.startActivity(viewModel.requestBatteryOptimizationExemption())
-                        } catch (e: Exception) {
-                            Toast
-                                .makeText(context, context.getString(R.string.settings_cannot_open), Toast.LENGTH_SHORT)
-                                .show()
-                        }
-                    },
-                shape = RoundedCornerShape(20.dp),
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                ),
-            ) {
-                Row(
-                    modifier = Modifier.padding(20.dp),
-                    verticalAlignment = Alignment.CenterVertically,
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(20.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                    ),
                 ) {
-                    Icon(
-                        Icons.Default.BatteryAlert,
-                        contentDescription = null,
-                        tint = if (viewModel.isBatteryOptimizationIgnored())
-                            MaterialTheme.colorScheme.primary
-                        else
-                            MaterialTheme.colorScheme.error,
-                        modifier = Modifier.size(22.dp),
-                    )
-                    Spacer(modifier = Modifier.width(16.dp))
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = stringResource(R.string.settings_battery_optimization),
-                            style = MaterialTheme.typography.titleMedium,
+                    Column {
+                        SettingToggle(
+                            title = stringResource(R.string.settings_auto_start),
+                            description = stringResource(R.string.settings_auto_start_desc),
+                            checked = autoStartOnBoot,
+                            onCheckedChange = viewModel::setAutoStartOnBoot,
                         )
-                        Text(
-                            text = if (viewModel.isBatteryOptimizationIgnored())
-                                stringResource(R.string.settings_battery_exempted)
-                            else
-                                stringResource(R.string.settings_battery_not_exempted),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        HorizontalDivider(
+                            modifier = Modifier.padding(horizontal = 20.dp),
+                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
+                        )
+                        SettingToggle(
+                            title = stringResource(R.string.settings_charge_only),
+                            description = stringResource(R.string.settings_charge_only_desc),
+                            checked = chargeOnlyMode,
+                            onCheckedChange = viewModel::setChargeOnlyMode,
                         )
                     }
-                    Icon(
-                        Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
-                        modifier = Modifier.size(20.dp),
+                }
+
+                // ══════════════════════════════════════
+                // Battery 섹션
+                // ══════════════════════════════════════
+                SectionHeader(
+                    title = stringResource(R.string.settings_section_battery),
+                    icon = Icons.Default.BatteryAlert,
+                )
+
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable {
+                            try {
+                                context.startActivity(viewModel.requestBatteryOptimizationExemption())
+                            } catch (e: Exception) {
+                                Toast
+                                    .makeText(context, context.getString(R.string.settings_cannot_open), Toast.LENGTH_SHORT)
+                                    .show()
+                            }
+                        },
+                    shape = RoundedCornerShape(20.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                    ),
+                ) {
+                    Row(
+                        modifier = Modifier.padding(20.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(
+                            Icons.Default.BatteryAlert,
+                            contentDescription = null,
+                            tint = if (viewModel.isBatteryOptimizationIgnored())
+                                MaterialTheme.colorScheme.primary
+                            else
+                                MaterialTheme.colorScheme.error,
+                            modifier = Modifier.size(22.dp),
+                        )
+                        Spacer(modifier = Modifier.width(16.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = stringResource(R.string.settings_battery_optimization),
+                                style = MaterialTheme.typography.titleMedium,
+                            )
+                            Text(
+                                text = if (viewModel.isBatteryOptimizationIgnored())
+                                    stringResource(R.string.settings_battery_exempted)
+                                else
+                                    stringResource(R.string.settings_battery_not_exempted),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        Icon(
+                            Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                            modifier = Modifier.size(20.dp),
+                        )
+                    }
+                }
+            }
+
+            if (selectedSettingsTabIndex == 1) {
+                SectionHeader(
+                    title = stringResource(R.string.settings_select_model),
+                    icon = Icons.Default.Psychology,
+                )
+
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(20.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                    ),
+                ) {
+                    Column {
+                        SettingClickableRow(
+                            title = stringResource(R.string.settings_current_provider),
+                            value = when (apiProvider) {
+                                "openrouter" -> stringResource(R.string.onboarding_provider_openrouter)
+                                "anthropic" -> stringResource(R.string.onboarding_provider_anthropic)
+                                "openai" -> stringResource(R.string.settings_provider_openai_api, openAiProviderLabel)
+                                "openai-codex" -> stringResource(
+                                    R.string.settings_provider_openai_codex,
+                                    openAiProviderLabel,
+                                )
+                                "openai-compatible" -> stringResource(R.string.onboarding_provider_openai_compatible)
+                                "google" -> stringResource(R.string.onboarding_provider_google)
+                                else -> apiProvider.replaceFirstChar { it.uppercase() }
+                            },
+                            onClick = { showProviderDialog = true },
+                        )
+
+                        HorizontalDivider(
+                            modifier = Modifier.padding(horizontal = 20.dp),
+                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
+                        )
+
+                        if (apiProvider != "openai-codex") {
+                            val apiKeyRowState = resolveApiKeyRowState(
+                                provider = apiProvider,
+                                apiKey = apiKey,
+                                baseUrl = openAiCompatibleBaseUrl,
+                                configuredLabel = stringResource(R.string.settings_api_key_configured),
+                                notConfiguredLabel = stringResource(R.string.settings_api_key_not_configured),
+                                notRequiredLabel = stringResource(R.string.settings_api_key_not_required),
+                            )
+                            SettingClickableRow(
+                                title = stringResource(R.string.settings_api_key),
+                                value = apiKeyRowState.value,
+                                valueColor = if (apiKeyRowState.isError) MaterialTheme.colorScheme.error else null,
+                                onClick = { showApiKeyDialog = true },
+                            )
+                        } else {
+                            SettingClickableRow(
+                                title = stringResource(R.string.settings_codex_oauth_title),
+                                value = when {
+                                    isCodexAuthInProgress -> stringResource(R.string.settings_codex_oauth_signing_in)
+                                    isCodexAuthenticated -> stringResource(R.string.settings_api_key_configured)
+                                    else -> stringResource(R.string.settings_api_key_not_configured)
+                                },
+                                valueColor = if (!isCodexAuthenticated && !isCodexAuthInProgress) MaterialTheme.colorScheme.error else null,
+                                onClick = { viewModel.loginOpenAiCodexOAuth() },
+                            )
+                            if (codexAuthDebugLine != null) {
+                                Text(
+                                    text = codexAuthDebugLine ?: "",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.padding(start = 20.dp, end = 20.dp, bottom = 12.dp),
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                            }
+                        }
+
+                    }
+                }
+
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(20.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                    ),
+                ) {
+                    SettingClickableRow(
+                        title = stringResource(R.string.settings_select_model),
+                        value = when {
+                            selectedModelIds.isEmpty() -> stringResource(R.string.settings_model_none_found)
+                            else -> selectedModelIds.joinToString(", ") {
+                                formatSelectedModelLabel(apiProvider, it)
+                            }
+                        },
+                        onClick = {
+                            showModelDialog = true
+                            viewModel.fetchModelsForCurrentProvider()
+                        },
+                    )
+                }
+
+                SectionHeader(
+                    title = stringResource(R.string.settings_default_model_label),
+                    icon = Icons.Default.Psychology,
+                )
+
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(20.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                    ),
+                ) {
+                    SettingClickableRow(
+                        title = stringResource(R.string.settings_default_model_label),
+                        value = defaultModelDisplay,
+                        onClick = { showDefaultModelDialog = true },
+                        enabled = defaultModelOptionsUi.isNotEmpty(),
                     )
                 }
             }
 
-            // ══════════════════════════════════════
-            // AI 섹션
-            // ══════════════════════════════════════
-            SectionHeader(
-                title = stringResource(R.string.settings_section_ai),
-                icon = Icons.Default.Psychology,
-            )
+            if (selectedSettingsTabIndex == 3) {
+                // ══════════════════════════════════════
+                // Tools 섹션
+                // ══════════════════════════════════════
+                SectionHeader(
+                    title = stringResource(R.string.settings_section_tools),
+                    icon = Icons.Default.Search,
+                )
 
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(20.dp),
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                ),
-            ) {
-                Column {
-                    // Provider
-                    SettingClickableRow(
-                        title = stringResource(R.string.settings_current_provider),
-                        value = when (apiProvider) {
-                            "openrouter" -> stringResource(R.string.onboarding_provider_openrouter)
-                            "anthropic" -> stringResource(R.string.onboarding_provider_anthropic)
-                            "openai", "openai-codex" -> stringResource(R.string.onboarding_provider_openai)
-                            "openai-compatible" -> stringResource(R.string.onboarding_provider_openai_compatible)
-                            "google" -> stringResource(R.string.onboarding_provider_google)
-                            else -> apiProvider.replaceFirstChar { it.uppercase() }
-                        },
-                        onClick = { showProviderDialog = true },
-                    )
-
-                    HorizontalDivider(
-                        modifier = Modifier.padding(horizontal = 20.dp),
-                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
-                    )
-
-                    if (apiProvider != "openai-compatible") {
-                        // Model
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(20.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                    ),
+                ) {
+                    Column {
                         SettingClickableRow(
-                            title = stringResource(R.string.settings_select_model),
-                            value = selectedModelDisplay,
-                            onClick = {
-                                showModelDialog = true
-                                viewModel.fetchModelsForCurrentProvider()
+                            title = stringResource(R.string.settings_brave_search_key),
+                            value = if (braveSearchApiKey.isNotBlank()) {
+                                stringResource(R.string.settings_api_key_configured) + " (${braveSearchApiKey.take(8)}...)"
+                            } else {
+                                stringResource(R.string.settings_brave_search_optional)
+                            },
+                            onClick = { showBraveKeyDialog = true },
+                        )
+
+                        HorizontalDivider(
+                            modifier = Modifier.padding(horizontal = 20.dp),
+                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
+                        )
+
+                        SettingToggle(
+                            title = stringResource(R.string.settings_memory_search_title),
+                            description = stringResource(R.string.settings_memory_search_desc),
+                            checked = memorySearchEnabled,
+                            onCheckedChange = { enabled ->
+                                viewModel.setMemorySearchEnabled(enabled)
+                                showRestartHint = true
                             },
                         )
-                    }
 
-                    if (isOpenAiProviderFamily) {
+                        if (memorySearchEnabled) {
+                            SettingClickableRow(
+                                title = stringResource(R.string.settings_memory_search_provider),
+                                value = memorySearchProviderDisplay,
+                                onClick = { showMemorySearchProviderDialog = true },
+                                indent = true,
+                            )
+                        }
+
+                        SettingClickableRow(
+                            title = stringResource(R.string.settings_memory_search_api_key),
+                            value = if (memorySearchApiKey.isNotBlank()) {
+                                stringResource(R.string.settings_api_key_configured) + " (${memorySearchApiKey.take(8)}...)"
+                            } else {
+                                stringResource(R.string.settings_memory_search_api_key_optional)
+                            },
+                            onClick = { showMemorySearchApiKeyDialog = true },
+                            indent = true,
+                        )
+
                         HorizontalDivider(
                             modifier = Modifier.padding(horizontal = 20.dp),
                             color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
                         )
 
                         SettingClickableRow(
-                            title = stringResource(R.string.settings_api_type),
-                            value = if (apiProvider == "openai-codex") {
-                                stringResource(R.string.settings_provider_openai_codex, openAiProviderLabel)
+                            title = stringResource(R.string.settings_openclaw_doctor_fix),
+                            value = if (isDoctorFixRunning) {
+                                stringResource(R.string.settings_openclaw_doctor_fix_running)
                             } else {
-                                stringResource(R.string.settings_provider_openai_api, openAiProviderLabel)
+                                stringResource(R.string.settings_openclaw_doctor_fix_run)
                             },
-                            onClick = { showGptSubscriptionDialog = true },
+                            enabled = !isMaintenanceBusy,
+                            onClick = { viewModel.runOpenClawDoctorFix() },
                         )
-                    }
-
-                    HorizontalDivider(
-                        modifier = Modifier.padding(horizontal = 20.dp),
-                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
-                    )
-
-                    if (apiProvider != "openai-codex") {
-                        SettingClickableRow(
-                            title = stringResource(R.string.settings_api_key),
-                            value = if (apiKey.isNotBlank()) {
-                                stringResource(R.string.settings_api_key_configured) + " (${apiKey.take(8)}...)"
-                            } else {
-                                stringResource(R.string.settings_api_key_not_configured)
-                            },
-                            valueColor = if (apiKey.isBlank()) MaterialTheme.colorScheme.error else null,
-                            onClick = { showApiKeyDialog = true },
-                        )
-                    } else {
-                        SettingClickableRow(
-                            title = stringResource(R.string.settings_codex_oauth_title),
-                            value = when {
-                                isCodexAuthInProgress -> stringResource(R.string.settings_codex_oauth_signing_in)
-                                isCodexAuthenticated -> stringResource(R.string.settings_api_key_configured)
-                                else -> stringResource(R.string.settings_api_key_not_configured)
-                            },
-                            valueColor = if (!isCodexAuthenticated && !isCodexAuthInProgress) MaterialTheme.colorScheme.error else null,
-                            onClick = { viewModel.loginOpenAiCodexOAuth() },
-                        )
-                        if (codexAuthDebugLine != null) {
-                            Text(
-                                text = codexAuthDebugLine ?: "",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.padding(start = 20.dp, end = 20.dp, bottom = 12.dp),
-                                maxLines = 2,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                        }
                     }
                 }
             }
 
-            // ══════════════════════════════════════
-            // Tools 섹션
-            // ══════════════════════════════════════
-            SectionHeader(
-                title = stringResource(R.string.settings_section_tools),
-                icon = Icons.Default.Search,
-            )
+            if (selectedSettingsTabIndex == 2) {
+                // ══════════════════════════════════════
+                // Channels 섹션
+                // ══════════════════════════════════════
+                SectionHeader(
+                    title = stringResource(R.string.settings_section_channels),
+                    icon = Icons.AutoMirrored.Filled.Chat,
+                )
 
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(20.dp),
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                ),
-            ) {
-                Column {
-                    SettingClickableRow(
-                        title = stringResource(R.string.settings_brave_search_key),
-                        value = if (braveSearchApiKey.isNotBlank()) {
-                            stringResource(R.string.settings_api_key_configured) + " (${braveSearchApiKey.take(8)}...)"
-                        } else {
-                            stringResource(R.string.settings_brave_search_optional)
-                        },
-                        onClick = { showBraveKeyDialog = true },
-                    )
-
-                    HorizontalDivider(
-                        modifier = Modifier.padding(horizontal = 20.dp),
-                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
-                    )
-
-                    SettingToggle(
-                        title = stringResource(R.string.settings_memory_search_title),
-                        description = stringResource(R.string.settings_memory_search_desc),
-                        checked = memorySearchEnabled,
-                        onCheckedChange = { enabled ->
-                            viewModel.setMemorySearchEnabled(enabled)
-                            showRestartHint = true
-                        },
-                    )
-
-                    if (memorySearchEnabled) {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(20.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                    ),
+                ) {
+                    Column {
+                        // WhatsApp (always-on): 토글 없이 QR 연결만 제공
                         SettingClickableRow(
-                            title = stringResource(R.string.settings_memory_search_provider),
-                            value = memorySearchProviderDisplay,
-                            onClick = { showMemorySearchProviderDialog = true },
-                            indent = true,
-                        )
-                    }
-
-                    SettingClickableRow(
-                        title = stringResource(R.string.settings_memory_search_api_key),
-                        value = if (memorySearchApiKey.isNotBlank()) {
-                            stringResource(R.string.settings_api_key_configured) + " (${memorySearchApiKey.take(8)}...)"
-                        } else {
-                            stringResource(R.string.settings_memory_search_api_key_optional)
-                        },
-                        onClick = { showMemorySearchApiKeyDialog = true },
-                        indent = true,
-                    )
-
-                    HorizontalDivider(
-                        modifier = Modifier.padding(horizontal = 20.dp),
-                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
-                    )
-
-                    SettingClickableRow(
-                        title = stringResource(R.string.settings_openclaw_doctor_fix),
-                        value = if (isDoctorFixRunning) {
-                            stringResource(R.string.settings_openclaw_doctor_fix_running)
-                        } else {
-                            stringResource(R.string.settings_openclaw_doctor_fix_run)
-                        },
-                        enabled = !isMaintenanceBusy,
-                        onClick = { viewModel.runOpenClawDoctorFix() },
-                    )
-                }
-            }
-
-            // ══════════════════════════════════════
-            // Channels 섹션
-            // ══════════════════════════════════════
-            SectionHeader(
-                title = stringResource(R.string.settings_section_channels),
-                icon = Icons.AutoMirrored.Filled.Chat,
-            )
-
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(20.dp),
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                ),
-            ) {
-                Column {
-                    // WhatsApp (always-on): 토글 없이 QR 연결만 제공
-                    SettingClickableRow(
-                        title = stringResource(R.string.settings_channel_whatsapp),
-                        value = if (isWhatsAppLinked) {
-                            stringResource(R.string.whatsapp_connected)
-                        } else {
-                            stringResource(R.string.whatsapp_connect_btn)
-                        },
-                        enabled = !isChannelDisconnecting,
-                        onClick = {
-                            viewModel.refreshWhatsAppLinkState()
-                            showWhatsAppActionDialog = true
-                        },
-                    )
-
-                    HorizontalDivider(
-                        modifier = Modifier.padding(horizontal = 20.dp),
-                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
-                    )
-
-                    // Telegram
-                    SettingToggle(
-                        title = stringResource(R.string.settings_channel_telegram),
-                        description = stringResource(R.string.settings_telegram_desc),
-                        checked = telegramEnabled,
-                        onCheckedChange = { enabled ->
-                            viewModel.setTelegramEnabled(enabled)
-                            if (enabled && telegramBotToken.isBlank()) {
-                                showTelegramTokenDialog = true
-                            }
-
-                        },
-                    )
-
-                    if (telegramEnabled) {
-                        SettingClickableRow(
-                            title = stringResource(R.string.settings_bot_token_title),
-                            value = if (telegramBotToken.isNotBlank()) {
-                                stringResource(R.string.settings_token_configured) + " (${telegramBotToken.take(8)}...)"
+                            title = stringResource(R.string.settings_channel_whatsapp),
+                            value = if (isWhatsAppLinked) {
+                                stringResource(R.string.whatsapp_connected)
                             } else {
-                                stringResource(R.string.settings_token_not_configured)
+                                stringResource(R.string.whatsapp_connect_btn)
                             },
-                            valueColor = if (telegramBotToken.isBlank()) MaterialTheme.colorScheme.error else null,
-                            onClick = { showTelegramTokenDialog = true },
-                            indent = true,
-                        )
-
-                    }
-
-                    HorizontalDivider(
-                        modifier = Modifier.padding(horizontal = 20.dp),
-                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
-                    )
-
-                    // Discord
-                    SettingToggle(
-                        title = stringResource(R.string.settings_channel_discord),
-                        description = stringResource(R.string.settings_discord_desc),
-                        checked = discordEnabled,
-                        onCheckedChange = { enabled ->
-                            viewModel.setDiscordEnabled(enabled)
-                            if (enabled && discordBotToken.isBlank()) {
-                                showDiscordTokenDialog = true
-                            }
-
-                        },
-                    )
-
-                    if (discordEnabled) {
-                        SettingClickableRow(
-                            title = stringResource(R.string.settings_bot_token_title),
-                            value = if (discordBotToken.isNotBlank()) {
-                                stringResource(R.string.settings_token_configured) + " (${discordBotToken.take(8)}...)"
-                            } else {
-                                stringResource(R.string.settings_token_not_configured)
+                            enabled = !isChannelDisconnecting,
+                            onClick = {
+                                viewModel.refreshWhatsAppLinkState()
+                                showWhatsAppActionDialog = true
                             },
-                            valueColor = if (discordBotToken.isBlank()) MaterialTheme.colorScheme.error else null,
-                            onClick = { showDiscordTokenDialog = true },
-                            indent = true,
                         )
 
-                        SettingClickableRow(
-                            title = stringResource(R.string.settings_discord_guild_allowlist_title),
-                            value = discordGuildAllowlistSummary(
-                                raw = discordGuildAllowlist,
-                                notConfigured = stringResource(R.string.settings_discord_guild_allowlist_not_configured),
-                                configuredFormat = stringResource(R.string.settings_discord_guild_allowlist_configured),
-                            ),
-                            valueColor = if (discordGuildAllowlist.trim().isEmpty()) MaterialTheme.colorScheme.error else null,
-                            onClick = { showDiscordGuildAllowlistDialog = true },
-                            indent = true,
+                        HorizontalDivider(
+                            modifier = Modifier.padding(horizontal = 20.dp),
+                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
                         )
 
+                        // Telegram
                         SettingToggle(
-                            title = stringResource(R.string.settings_discord_require_mention_title),
-                            description = stringResource(R.string.settings_discord_require_mention_desc),
-                            checked = discordRequireMention,
+                            title = stringResource(R.string.settings_channel_telegram),
+                            description = stringResource(R.string.settings_telegram_desc),
+                            checked = telegramEnabled,
                             onCheckedChange = { enabled ->
-                                viewModel.setDiscordRequireMention(enabled, restartGateway = false)
-                                showBotRestartNotice = true
+                                viewModel.setTelegramEnabled(enabled)
+                                if (enabled && telegramBotToken.isBlank()) {
+                                    showTelegramTokenDialog = true
+                                }
                             },
-                            indent = true,
                         )
-                    }
-                }
-            }
 
-            // ══════════════════════════════════════
-            // About 섹션
-            // ══════════════════════════════════════
-            SectionHeader(
-                title = stringResource(R.string.settings_section_about),
-                icon = Icons.Default.Info,
-            )
-
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(20.dp),
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                ),
-            ) {
-                Column(modifier = Modifier.padding(20.dp)) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { viewModel.onVersionInfoTapped() },
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Icon(
-                            Icons.Default.Info,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(22.dp),
-                        )
-                        Spacer(modifier = Modifier.width(16.dp))
-                        Column {
-                            Text(
-                                stringResource(R.string.settings_about_version, BuildConfig.VERSION_NAME),
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.SemiBold,
+                        if (telegramEnabled) {
+                            SettingClickableRow(
+                                title = stringResource(R.string.settings_bot_token_title),
+                                value = if (telegramBotToken.isNotBlank()) {
+                                    stringResource(R.string.settings_token_configured) + " (${telegramBotToken.take(8)}...)"
+                                } else {
+                                    stringResource(R.string.settings_token_not_configured)
+                                },
+                                valueColor = if (telegramBotToken.isBlank()) MaterialTheme.colorScheme.error else null,
+                                onClick = { showTelegramTokenDialog = true },
+                                indent = true,
                             )
-                            Text(
-                                text = stringResource(R.string.settings_about_powered_by),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        }
+
+                        HorizontalDivider(
+                            modifier = Modifier.padding(horizontal = 20.dp),
+                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
+                        )
+
+                        // Discord
+                        SettingToggle(
+                            title = stringResource(R.string.settings_channel_discord),
+                            description = stringResource(R.string.settings_discord_desc),
+                            checked = discordEnabled,
+                            onCheckedChange = { enabled ->
+                                viewModel.setDiscordEnabled(enabled)
+                                if (enabled && discordBotToken.isBlank()) {
+                                    showDiscordTokenDialog = true
+                                }
+                            },
+                        )
+
+                        if (discordEnabled) {
+                            SettingClickableRow(
+                                title = stringResource(R.string.settings_bot_token_title),
+                                value = if (discordBotToken.isNotBlank()) {
+                                    stringResource(R.string.settings_token_configured) + " (${discordBotToken.take(8)}...)"
+                                } else {
+                                    stringResource(R.string.settings_token_not_configured)
+                                },
+                                valueColor = if (discordBotToken.isBlank()) MaterialTheme.colorScheme.error else null,
+                                onClick = { showDiscordTokenDialog = true },
+                                indent = true,
+                            )
+
+                            SettingClickableRow(
+                                title = stringResource(R.string.settings_discord_guild_allowlist_title),
+                                value = discordGuildAllowlistSummary(
+                                    raw = discordGuildAllowlist,
+                                    notConfigured = stringResource(R.string.settings_discord_guild_allowlist_not_configured),
+                                    configuredFormat = stringResource(R.string.settings_discord_guild_allowlist_configured),
+                                ),
+                                valueColor = if (discordGuildAllowlist.trim().isEmpty()) MaterialTheme.colorScheme.error else null,
+                                onClick = { showDiscordGuildAllowlistDialog = true },
+                                indent = true,
+                            )
+
+                            SettingToggle(
+                                title = stringResource(R.string.settings_discord_require_mention_title),
+                                description = stringResource(R.string.settings_discord_require_mention_desc),
+                                checked = discordRequireMention,
+                                onCheckedChange = { enabled ->
+                                    viewModel.setDiscordRequireMention(enabled, restartGateway = false)
+                                    showBotRestartNotice = true
+                                },
+                                indent = true,
                             )
                         }
                     }
-                    Spacer(modifier = Modifier.height(12.dp))
-                    Text(
-                        text = stringResource(R.string.settings_disclaimer),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    Spacer(modifier = Modifier.height(12.dp))
-                    HorizontalDivider(
-                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
-                    )
-                    SettingClickableRow(
-                        title = "Open Source Licenses",
-                        value = "View",
-                        onClick = { showOssLicensesDialog = true },
-                    )
-                    HorizontalDivider(
-                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
-                    )
-                    SettingClickableRow(
-                        title = stringResource(R.string.bug_report_title),
-                        value = bugReportUiState.artifactInfo?.let {
-                            stringResource(
-                                R.string.bug_report_last_file,
-                                it.fileName,
-                                formatFileSize(it.sizeBytes),
-                            )
-                        } ?: stringResource(R.string.bug_report_consent_required),
-                        onClick = { viewModel.openBugReportDialog() },
-                    )
                 }
             }
 
-            if (isOpenClawUpdateAvailable) {
+            if (selectedSettingsTabIndex == 0) {
+                // ══════════════════════════════════════
+                // About 섹션
+                // ══════════════════════════════════════
+                SectionHeader(
+                    title = stringResource(R.string.settings_section_about),
+                    icon = Icons.Default.Info,
+                )
+
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(20.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                    ),
+                ) {
+                    Column(modifier = Modifier.padding(20.dp)) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { viewModel.onVersionInfoTapped() },
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Icon(
+                                Icons.Default.Info,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(22.dp),
+                            )
+                            Spacer(modifier = Modifier.width(16.dp))
+                            Column {
+                                Text(
+                                    stringResource(R.string.settings_about_version, BuildConfig.VERSION_NAME),
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.SemiBold,
+                                )
+                                Text(
+                                    text = stringResource(R.string.settings_about_powered_by),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Text(
+                            text = stringResource(R.string.settings_disclaimer),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Spacer(modifier = Modifier.height(12.dp))
+                        HorizontalDivider(
+                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
+                        )
+                        SettingClickableRow(
+                            title = "Open Source Licenses",
+                            value = "View",
+                            onClick = { showOssLicensesDialog = true },
+                        )
+                        HorizontalDivider(
+                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
+                        )
+                        SettingClickableRow(
+                            title = stringResource(R.string.bug_report_title),
+                            value = bugReportUiState.artifactInfo?.let {
+                                stringResource(
+                                    R.string.bug_report_last_file,
+                                    it.fileName,
+                                    formatFileSize(it.sizeBytes),
+                                )
+                            } ?: stringResource(R.string.bug_report_consent_required),
+                            onClick = { viewModel.openBugReportDialog() },
+                        )
+                    }
+                }
+            }
+
+            if (selectedSettingsTabIndex == 3 && isOpenClawUpdateAvailable) {
                 FilledTonalButton(
                     onClick = { showOpenClawUpdateConfirmDialog = true },
                     enabled = !isMaintenanceBusy,
@@ -745,7 +832,7 @@ fun SettingsScreen(
                 }
             }
 
-            if (!openClawVersionInfoText.isNullOrBlank()) {
+            if (selectedSettingsTabIndex == 3 && !openClawVersionInfoText.isNullOrBlank()) {
                 Text(
                     text = openClawVersionInfoText,
                     style = MaterialTheme.typography.bodySmall,
@@ -753,7 +840,7 @@ fun SettingsScreen(
                 )
             }
 
-            if (isOpenClawUpdateAvailable) {
+            if (selectedSettingsTabIndex == 3 && isOpenClawUpdateAvailable) {
                 TextButton(
                     onClick = { showRecoveryInstallConfirmDialog = true },
                     enabled = !isMaintenanceBusy,
@@ -761,7 +848,7 @@ fun SettingsScreen(
                 ) {
                     Text(stringResource(R.string.dashboard_update_action_recover))
                 }
-            } else {
+            } else if (selectedSettingsTabIndex == 3) {
                 FilledTonalButton(
                     onClick = { showRecoveryInstallConfirmDialog = true },
                     enabled = !isMaintenanceBusy,
@@ -785,13 +872,13 @@ fun SettingsScreen(
     if (showModelDialog) {
         ModelSelectionDialog(
             models = availableModels,
-            selectedModelId = selectedModel,
+            selectedModelIds = selectedModelIds.toSet(),
             isLoading = isLoadingModels,
             errorMessage = modelLoadError,
-            onSelectModel = { model ->
-                viewModel.setSelectedModel(model) {
+            onApplySelection = { models ->
+                viewModel.applySelectedModels(models) { _, changed ->
                     showModelDialog = false
-                    viewModel.shouldShowRestartPromptForProvider(apiProvider) { shouldShow ->
+                    viewModel.shouldShowRestartPromptForRuntimeChange(changed) { shouldShow ->
                         showRestartHint = shouldShow
                     }
                 }
@@ -801,62 +888,93 @@ fun SettingsScreen(
         )
     }
 
+    if (showDefaultModelDialog) {
+        DefaultModelSelectionDialog(
+            options = defaultModelOptionsUi,
+            selectedProvider = selectedModelProvider,
+            selectedModelId = formatCanonicalSelectedModelId(selectedModelProvider, selectedModel),
+            onApplySelection = { option ->
+                viewModel.setGlobalDefaultModel(option.provider, option.modelId) { changed ->
+                    showDefaultModelDialog = false
+                    viewModel.shouldShowRestartPromptForRuntimeChange(changed) { shouldShow ->
+                        showRestartHint = shouldShow
+                    }
+                }
+            },
+            onDismiss = { showDefaultModelDialog = false },
+        )
+    }
+
     // ── Provider Selection Dialog ──
     if (showProviderDialog) {
         ProviderSelectionDialog(
             currentProvider = apiProvider,
             onSelectProvider = { provider ->
-                viewModel.setApiProvider(provider)
-                showProviderDialog = false
-                viewModel.shouldShowRestartPromptForProvider(provider) { shouldShow ->
-                    showRestartHint = shouldShow
+                viewModel.setApiProvider(provider) { _, changed ->
+                    viewModel.shouldShowRestartPromptForRuntimeChange(changed) { shouldShow ->
+                        showRestartHint = shouldShow
+                    }
                 }
+                showProviderDialog = false
             },
             onDismiss = { showProviderDialog = false },
         )
     }
 
-    if (showGptSubscriptionDialog) {
-        GptSubscriptionDialog(
-            currentProvider = apiProvider,
-            onSelect = { useCodexOAuth ->
-                viewModel.setGptSubscription(useCodexOAuth)
-                showGptSubscriptionDialog = false
-                val provider = if (useCodexOAuth) "openai-codex" else "openai"
-                viewModel.shouldShowRestartPromptForProvider(provider) { shouldShow ->
-                    showRestartHint = shouldShow
-                }
-            },
-            onDismiss = { showGptSubscriptionDialog = false },
-        )
-    }
-
     // ── API Key Input Dialog ──
     if (showApiKeyDialog) {
+        val dialogProvider = apiKeyDialogProviderOverride ?: apiProvider
         ApiKeyInputDialog(
-            currentKey = apiKey,
-            provider = apiProvider,
+            currentKey = apiKeyDialogCurrentKeyOverride ?: if (dialogProvider == apiProvider) apiKey else "",
+            provider = dialogProvider,
             currentBaseUrl = openAiCompatibleBaseUrl,
-            currentModelId = if (apiProvider == "openai-compatible") {
-                selectedModel.removePrefix("openai-compatible/")
-            } else {
-                selectedModel
-            },
+            currentModelId = resolveApiKeyDialogModelId(
+                provider = dialogProvider,
+                openAiCompatibleModelId = openAiCompatibleModelId,
+                selectedModel = selectedModel,
+            ),
             onSave = { key ->
-                viewModel.setApiKey(key)
+                if (dialogProvider == apiProvider) {
+                    viewModel.setApiKey(key) { _, changed ->
+                        viewModel.shouldShowRestartPromptForRuntimeChange(changed) { shouldShow ->
+                            showRestartHint = shouldShow
+                        }
+                    }
+                } else {
+                    viewModel.setApiKeyForProvider(dialogProvider, key) { _, changed ->
+                        viewModel.shouldShowRestartPromptForRuntimeChange(changed) { shouldShow ->
+                            showRestartHint = shouldShow
+                        }
+                    }
+                }
                 showApiKeyDialog = false
-                showRestartHint = true
+                apiKeyDialogProviderOverride = null
+                apiKeyDialogCurrentKeyOverride = null
             },
             onSaveOpenAiCompatible = { key, baseUrl, modelId ->
                 viewModel.saveOpenAiCompatibleConfig(
                     apiKey = key,
                     baseUrl = baseUrl,
                     modelId = modelId,
+                    activateProvider = shouldActivateOpenAiCompatibleApiSave(
+                        dialogProvider = dialogProvider,
+                        globalPrimaryProvider = selectedModelProvider,
+                    ),
+                    onApplied = { changed ->
+                        viewModel.shouldShowRestartPromptForRuntimeChange(changed) { shouldShow ->
+                            showRestartHint = shouldShow
+                        }
+                    },
                 )
                 showApiKeyDialog = false
-                showRestartHint = true
+                apiKeyDialogProviderOverride = null
+                apiKeyDialogCurrentKeyOverride = null
             },
-            onDismiss = { showApiKeyDialog = false },
+            onDismiss = {
+                showApiKeyDialog = false
+                apiKeyDialogProviderOverride = null
+                apiKeyDialogCurrentKeyOverride = null
+            },
         )
     }
 
@@ -1009,7 +1127,7 @@ fun SettingsScreen(
                 TextButton(
                     onClick = {
                         showRestartHint = false
-                        viewModel.restartGatewayNow()
+                        viewModel.applyRuntimeLaunchConfigNow()
                     },
                 ) {
                     Text(stringResource(R.string.settings_restart_confirm_yes))
@@ -1483,6 +1601,110 @@ private fun ChannelDisconnectProgressDialog(channelLabel: String) {
 
 // ── Reusable Components ──
 
+internal fun resolveApiKeyDialogModelId(
+    provider: String,
+    openAiCompatibleModelId: String,
+    selectedModel: String,
+): String {
+    return if (provider == "openai-compatible") {
+        openAiCompatibleModelId.removePrefix("openai-compatible/")
+    } else {
+        selectedModel
+    }
+}
+
+internal fun shouldActivateOpenAiCompatibleApiSave(
+    dialogProvider: String,
+    globalPrimaryProvider: String,
+): Boolean {
+    return dialogProvider == "openai-compatible" && globalPrimaryProvider == "openai-compatible"
+}
+
+internal fun canSaveApiKeyDialog(
+    provider: String,
+    apiKey: String,
+    baseUrl: String,
+): Boolean {
+    return if (provider == "openai-compatible") {
+        baseUrl.isNotBlank() &&
+            (
+                apiKey.isNotBlank() ||
+                    PreferencesManager.isKnownKeylessOpenAiCompatibleBaseUrl(baseUrl)
+            )
+    } else {
+        apiKey.isNotBlank()
+    }
+}
+
+internal data class ApiKeyRowState(
+    val value: String,
+    val isError: Boolean,
+)
+
+internal fun resolveApiKeyRowState(
+    provider: String,
+    apiKey: String,
+    baseUrl: String,
+    configuredLabel: String,
+    notConfiguredLabel: String,
+    notRequiredLabel: String,
+): ApiKeyRowState {
+    val trimmedProvider = provider.trim().lowercase(Locale.US)
+    val trimmedApiKey = apiKey.trim()
+    val isKeylessCompat =
+        trimmedProvider == "openai-compatible" &&
+            trimmedApiKey.isBlank() &&
+            PreferencesManager.isKnownKeylessOpenAiCompatibleBaseUrl(baseUrl)
+    return when {
+        trimmedApiKey.isNotBlank() ->
+            ApiKeyRowState(
+                value = "$configuredLabel (${trimmedApiKey.take(8)}...)",
+                isError = false,
+            )
+
+        isKeylessCompat ->
+            ApiKeyRowState(
+                value = notRequiredLabel,
+                isError = false,
+            )
+
+        else ->
+            ApiKeyRowState(
+                value = notConfiguredLabel,
+                isError = true,
+            )
+    }
+}
+
+internal fun formatCanonicalSelectedModelId(
+    provider: String,
+    modelId: String,
+): String {
+    val trimmedProvider = provider.trim().lowercase(Locale.US)
+    val trimmedModelId = modelId.trim()
+    if (trimmedModelId.isBlank()) return ""
+    return if (trimmedProvider == "openai-compatible") {
+        trimmedModelId.removePrefix("openai-compatible/").trim()
+    } else {
+        trimmedModelId
+    }
+}
+
+internal fun formatSelectedModelLabel(
+    provider: String,
+    modelId: String,
+): String {
+    val canonicalModelId = formatCanonicalSelectedModelId(provider, modelId)
+    return when (provider.trim().lowercase(Locale.US)) {
+        "openrouter" -> canonicalModelId.removePrefix("openrouter/")
+        "anthropic" -> canonicalModelId.removePrefix("anthropic/")
+        "openai" -> canonicalModelId.removePrefix("openai/")
+        "openai-codex" -> canonicalModelId.removePrefix("openai-codex/")
+        "google" -> canonicalModelId.removePrefix("google/")
+        else -> canonicalModelId
+    }
+}
+
 @Composable
 private fun SectionHeader(
     title: String,
@@ -1608,10 +1830,12 @@ private fun ProviderSelectionDialog(
     onSelectProvider: (String) -> Unit,
     onDismiss: () -> Unit,
 ) {
+    val openAiLabel = stringResource(R.string.onboarding_provider_openai)
     val providers = listOf(
         "openrouter" to stringResource(R.string.onboarding_provider_openrouter),
         "anthropic" to stringResource(R.string.onboarding_provider_anthropic),
-        "openai" to stringResource(R.string.onboarding_provider_openai),
+        "openai" to stringResource(R.string.settings_provider_openai_api, openAiLabel),
+        "openai-codex" to stringResource(R.string.settings_provider_openai_codex, openAiLabel),
         "openai-compatible" to stringResource(R.string.onboarding_provider_openai_compatible),
         "google" to stringResource(R.string.onboarding_provider_google),
     )
@@ -1632,11 +1856,7 @@ private fun ProviderSelectionDialog(
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         RadioButton(
-                            selected = if (id == "openai") {
-                                currentProvider == "openai" || currentProvider == "openai-codex"
-                            } else {
-                                currentProvider == id
-                            },
+                            selected = currentProvider == id,
                             onClick = { onSelectProvider(id) },
                         )
                         Spacer(modifier = Modifier.width(8.dp))
@@ -1693,62 +1913,6 @@ private fun MemorySearchProviderDialog(
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(text = label, style = MaterialTheme.typography.bodyMedium)
                     }
-                }
-            }
-        },
-        confirmButton = {
-            TextButton(onClick = onDismiss) {
-                Text(stringResource(R.string.settings_api_key_cancel))
-            }
-        },
-    )
-}
-
-@Composable
-private fun GptSubscriptionDialog(
-    currentProvider: String,
-    onSelect: (Boolean) -> Unit,
-    onDismiss: () -> Unit,
-) {
-    val openAiLabel = stringResource(R.string.onboarding_provider_openai)
-    val apiLabel = stringResource(R.string.settings_provider_openai_api, openAiLabel)
-    val codexLabel = stringResource(R.string.settings_provider_openai_codex, openAiLabel)
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        shape = RoundedCornerShape(24.dp),
-        title = { Text(stringResource(R.string.settings_api_type)) },
-        text = {
-            Column {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable { onSelect(false) }
-                        .heightIn(min = 48.dp)
-                        .padding(vertical = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    RadioButton(
-                        selected = currentProvider == "openai",
-                        onClick = { onSelect(false) },
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(text = apiLabel, style = MaterialTheme.typography.bodyMedium)
-                }
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable { onSelect(true) }
-                        .heightIn(min = 48.dp)
-                        .padding(vertical = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    RadioButton(
-                        selected = currentProvider == "openai-codex",
-                        onClick = { onSelect(true) },
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(text = codexLabel, style = MaterialTheme.typography.bodyMedium)
                 }
             }
         },
@@ -1853,11 +2017,11 @@ private fun ApiKeyInputDialog(
                         onSave(keyText.trim())
                     }
                 },
-                enabled = if (isOpenAiCompatible) {
-                    keyText.isNotBlank() && baseUrlText.isNotBlank() && modelIdText.isNotBlank()
-                } else {
-                    keyText.isNotBlank()
-                },
+                enabled = canSaveApiKeyDialog(
+                    provider = provider,
+                    apiKey = keyText.trim(),
+                    baseUrl = baseUrlText.trim(),
+                ),
             ) {
                 Text(stringResource(R.string.settings_api_key_save))
             }

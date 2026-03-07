@@ -11,6 +11,7 @@ import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import java.io.IOException
+import java.net.URI
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.combine
@@ -37,10 +38,21 @@ class PreferencesManager(private val context: Context) {
         private val KEY_CHARGE_ONLY_MODE = booleanPreferencesKey("charge_only_mode")
         private val KEY_OPENCLAW_VERSION = stringPreferencesKey("openclaw_version")
         private val KEY_SELECTED_MODEL = stringPreferencesKey("selected_model")
+        private val KEY_SELECTED_MODEL_PROVIDER = stringPreferencesKey("selected_model_provider")
         private val KEY_SELECTED_MODEL_REASONING = booleanPreferencesKey("selected_model_reasoning")
         private val KEY_SELECTED_MODEL_IMAGES = booleanPreferencesKey("selected_model_images")
         private val KEY_SELECTED_MODEL_CONTEXT = stringPreferencesKey("selected_model_context")
         private val KEY_SELECTED_MODEL_MAX_OUTPUT = stringPreferencesKey("selected_model_max_output")
+        private val KEY_SELECTED_MODELS_BY_PROVIDER_JSON =
+            stringPreferencesKey("selected_models_by_provider_json")
+        private val KEY_PRIMARY_MODEL_BY_PROVIDER_JSON =
+            stringPreferencesKey("primary_model_by_provider_json")
+        private val KEY_MODEL_METADATA_BY_PROVIDER_JSON =
+            stringPreferencesKey("model_metadata_by_provider_json")
+        private val KEY_OPENAI_COMPATIBLE_PROFILES_JSON =
+            stringPreferencesKey("openai_compatible_profiles_json")
+        private val KEY_ACTIVE_OPENAI_COMPATIBLE_PROFILE_ID =
+            stringPreferencesKey("active_openai_compatible_profile_id")
         private val KEY_WHATSAPP_ENABLED = booleanPreferencesKey("whatsapp_enabled")
         private val KEY_TELEGRAM_ENABLED = booleanPreferencesKey("telegram_enabled")
         private val KEY_TELEGRAM_BOT_TOKEN = stringPreferencesKey("telegram_bot_token")
@@ -99,6 +111,395 @@ class PreferencesManager(private val context: Context) {
             if (normalizedLastRequestAt != null && nowEpochMs - normalizedLastRequestAt < cooldownMs) return false
             return true
         }
+
+        private fun normalizeProvider(provider: String): String {
+            val raw = provider.trim().lowercase()
+            return when (raw) {
+                "nvidia" -> "openrouter"
+                else -> raw
+            }
+        }
+
+        private val MODEL_SELECTION_PROVIDERS = listOf(
+            "openrouter",
+            "anthropic",
+            "openai",
+            "openai-codex",
+            "openai-compatible",
+            "google",
+        )
+
+        private fun defaultModelIdForProvider(provider: String): String {
+            return when (normalizeProvider(provider)) {
+                "openrouter" -> "openrouter/free"
+                "anthropic" -> "claude-sonnet-4-5"
+                "openai" -> "gpt-5-mini"
+                "openai-codex" -> "gpt-5.3-codex"
+                "openai-compatible" -> "gpt-4o-mini"
+                "google" -> "gemini-2.5-flash"
+                else -> "openrouter/free"
+            }
+        }
+
+        private fun defaultModelMetadata(modelId: String): SelectedModelConfigEntry {
+            return SelectedModelConfigEntry(
+                id = modelId.trim(),
+                supportsReasoning = false,
+                supportsImages = false,
+                contextLength = 200000,
+                maxOutputTokens = 4096,
+            )
+        }
+
+        private fun knownProviderPrefix(modelId: String): String? {
+            val normalized = modelId.trim().lowercase()
+            val candidates = listOf(
+                "openrouter",
+                "anthropic",
+                "openai",
+                "openai-codex",
+                "openai-compatible",
+                "google",
+            )
+            return candidates.firstOrNull { normalized.startsWith("$it/") }
+        }
+
+        private fun canonicalizeModelIdForProvider(provider: String, modelId: String): String {
+            val trimmedModelId = modelId.trim()
+            if (trimmedModelId.isBlank()) return ""
+            return when (normalizeProvider(provider)) {
+                "openai-compatible" -> trimmedModelId.removePrefix("openai-compatible/").trim()
+                else -> trimmedModelId
+            }
+        }
+
+        private fun canonicalizeMetadataByIdForProvider(
+            provider: String,
+            metadataById: Map<String, SelectedModelConfigEntry>,
+        ): Map<String, SelectedModelConfigEntry> {
+            if (metadataById.isEmpty()) return emptyMap()
+            val normalizedProvider = normalizeProvider(provider)
+            val canonicalized = linkedMapOf<String, SelectedModelConfigEntry>()
+            metadataById.forEach { (rawModelId, metadata) ->
+                val canonicalModelId = canonicalizeModelIdForProvider(normalizedProvider, rawModelId)
+                if (canonicalModelId.isBlank()) return@forEach
+                val prefersThisEntry = rawModelId.trim() == canonicalModelId
+                if (!canonicalized.containsKey(canonicalModelId) || prefersThisEntry) {
+                    canonicalized[canonicalModelId] = metadata.copy(id = canonicalModelId)
+                }
+            }
+            return canonicalized.toMap()
+        }
+
+        private fun isPrivateIpv4Host(host: String): Boolean {
+            val parts = host.split(".")
+            if (parts.size != 4) return false
+            val octets = parts.map { it.toIntOrNull() ?: return false }
+            if (octets.any { it !in 0..255 }) return false
+            val first = octets[0]
+            val second = octets[1]
+            return when {
+                first == 10 -> true
+                first == 127 -> true
+                first == 192 && second == 168 -> true
+                first == 172 && second in 16..31 -> true
+                first == 169 && second == 254 -> true
+                first == 100 && second in 64..127 -> true
+                else -> false
+            }
+        }
+
+        private fun isPrivateIpv6Host(host: String): Boolean {
+            val normalized = host.trim().trim('[', ']').lowercase()
+            if (normalized.isBlank() || !normalized.contains(':')) return false
+            return normalized == "::1" ||
+                normalized.startsWith("fe80:") ||
+                normalized.startsWith("fc") ||
+                normalized.startsWith("fd")
+        }
+
+        private fun isLikelyPrivateHost(host: String): Boolean {
+            val normalized = host.trim().trim('[', ']').lowercase()
+            if (normalized.isBlank()) return false
+            if (
+                normalized == "localhost" ||
+                normalized.endsWith(".localhost") ||
+                normalized == "10.0.2.2"
+            ) {
+                return true
+            }
+            if (isPrivateIpv4Host(normalized) || isPrivateIpv6Host(normalized)) return true
+            if (!normalized.contains('.')) return true
+            return normalized.endsWith(".local") ||
+                normalized.endsWith(".localdomain") ||
+                normalized.endsWith(".home.arpa") ||
+                normalized.endsWith(".internal") ||
+                normalized.endsWith(".lan") ||
+                normalized.endsWith(".ts.net")
+        }
+
+        internal fun isKnownKeylessOpenAiCompatibleBaseUrl(baseUrl: String): Boolean {
+            val normalizedBaseUrl = baseUrl.trim().let { trimmed ->
+                when {
+                    trimmed.isBlank() -> ""
+                    trimmed.contains("://") -> trimmed
+                    trimmed.startsWith("//") -> "http:$trimmed"
+                    else -> "http://$trimmed"
+                }
+            }
+            val host = runCatching { URI(normalizedBaseUrl).host.orEmpty() }
+                .getOrNull()
+                .orEmpty()
+                .trim()
+                .trim('[', ']')
+                .lowercase()
+            return isLikelyPrivateHost(host)
+        }
+
+        private fun inferProviderFromLegacyUnscopedModelId(
+            modelId: String,
+            profileMatchesSelectedModel: Boolean,
+        ): String {
+            val normalizedModelId = modelId.trim()
+            if (normalizedModelId.isBlank()) return ""
+
+            val compatibleProviders = listOf(
+                "openai-codex",
+                "anthropic",
+                "google",
+                "openrouter",
+                "openai",
+                "openai-compatible",
+            ).filter { provider ->
+                val canonicalModelId = canonicalizeModelIdForProvider(provider, normalizedModelId)
+                isLegacyModelCompatibleWithProvider(provider, canonicalModelId)
+            }
+
+            if (profileMatchesSelectedModel && compatibleProviders.contains("openai-compatible")) {
+                return "openai-compatible"
+            }
+
+            val specificMatches = compatibleProviders.filter { it != "openai-compatible" }
+            if (specificMatches.isEmpty()) return ""
+
+            return when {
+                specificMatches.contains("openai-codex") -> "openai-codex"
+                specificMatches.contains("anthropic") -> "anthropic"
+                specificMatches.contains("google") -> "google"
+                specificMatches.contains("openrouter") -> "openrouter"
+                specificMatches.contains("openai") -> "openai"
+                else -> specificMatches.first()
+            }
+        }
+
+        private fun isLegacyModelCompatibleWithProvider(
+            provider: String,
+            modelId: String,
+        ): Boolean {
+            val trimmedModelId = modelId.trim()
+            if (trimmedModelId.isBlank()) return false
+            val normalizedProvider = normalizeProvider(provider)
+            val providerPrefix = knownProviderPrefix(trimmedModelId)
+            if (providerPrefix == null) {
+                val lowerModelId = trimmedModelId.lowercase()
+                return when (normalizedProvider) {
+                    "openrouter" -> trimmedModelId.contains("/")
+                    "anthropic" -> lowerModelId.startsWith("claude")
+                    "openai" -> {
+                        val looksLikeOpenAiFamily = lowerModelId.startsWith("gpt-") ||
+                            lowerModelId.matches(Regex("""o\d+.*"""))
+                        looksLikeOpenAiFamily && !lowerModelId.contains("codex")
+                    }
+                    "openai-codex" -> lowerModelId.contains("codex")
+                    "openai-compatible" -> true
+                    "google" -> lowerModelId.startsWith("gemini")
+                    else -> false
+                }
+            }
+            return when (normalizedProvider) {
+                "openrouter" -> providerPrefix != "openai-compatible" && providerPrefix != "openai-codex"
+                "openai-codex" -> {
+                    providerPrefix == "openai-codex" ||
+                        (providerPrefix == "openai" &&
+                            trimmedModelId.substringAfter("openai/").lowercase().contains("codex"))
+                }
+                "openai-compatible" -> providerPrefix == "openai-compatible" || providerPrefix == "openai"
+                else -> providerPrefix == normalizedProvider
+            }
+        }
+
+        private fun decodeStringListMap(raw: String?): Map<String, List<String>> {
+            if (raw.isNullOrBlank()) return emptyMap()
+            return runCatching {
+                val json = org.json.JSONObject(raw)
+                val result = linkedMapOf<String, MutableList<String>>()
+                val keys = json.keys()
+                while (keys.hasNext()) {
+                    val rawProvider = keys.next()
+                    val provider = normalizeProvider(rawProvider)
+                    if (provider.isBlank()) continue
+                    val array = json.optJSONArray(rawProvider) ?: continue
+                    val target = result.getOrPut(provider) { mutableListOf() }
+                    for (index in 0 until array.length()) {
+                        val modelId = array.optString(index).trim()
+                        if (modelId.isNotBlank() && modelId !in target) {
+                            target += modelId
+                        }
+                    }
+                }
+                result.mapValues { (_, ids) -> ids.toList() }
+            }.getOrDefault(emptyMap())
+        }
+
+        private fun encodeStringListMap(map: Map<String, List<String>>): String {
+            val root = org.json.JSONObject()
+            map.forEach { (providerKey, modelIds) ->
+                val provider = normalizeProvider(providerKey)
+                if (provider.isBlank()) return@forEach
+                val normalizedModelIds = modelIds
+                    .map { it.trim() }
+                    .filter { it.isNotBlank() }
+                    .distinct()
+                if (normalizedModelIds.isEmpty()) return@forEach
+                val array = org.json.JSONArray()
+                normalizedModelIds.forEach(array::put)
+                root.put(provider, array)
+            }
+            return root.toString()
+        }
+
+        private fun decodeModelMetadataByProvider(
+            raw: String?,
+        ): Map<String, Map<String, SelectedModelConfigEntry>> {
+            if (raw.isNullOrBlank()) return emptyMap()
+            return runCatching {
+                val root = org.json.JSONObject(raw)
+                val result = linkedMapOf<String, MutableMap<String, SelectedModelConfigEntry>>()
+                val providerKeys = root.keys()
+                while (providerKeys.hasNext()) {
+                    val rawProvider = providerKeys.next()
+                    val provider = normalizeProvider(rawProvider)
+                    if (provider.isBlank()) continue
+                    val providerObject = root.optJSONObject(rawProvider) ?: continue
+                    val target = result.getOrPut(provider) { linkedMapOf() }
+                    val modelKeys = providerObject.keys()
+                    while (modelKeys.hasNext()) {
+                        val modelId = modelKeys.next().trim()
+                        if (modelId.isBlank()) continue
+                        val modelObject = providerObject.optJSONObject(modelId) ?: continue
+                        target[modelId] = SelectedModelConfigEntry(
+                            id = modelId,
+                            supportsReasoning = modelObject.optBoolean("supportsReasoning", false),
+                            supportsImages = modelObject.optBoolean("supportsImages", false),
+                            contextLength = modelObject.optInt("contextLength", 200000).coerceAtLeast(1),
+                            maxOutputTokens = modelObject.optInt("maxOutputTokens", 4096).coerceAtLeast(1),
+                        )
+                    }
+                    if (target.isEmpty()) {
+                        result.remove(provider)
+                    }
+                }
+                buildMap {
+                    result.forEach { (provider, metadataById) ->
+                        if (metadataById.isNotEmpty()) {
+                            put(provider, metadataById.toMap())
+                        }
+                    }
+                }
+            }.getOrDefault(emptyMap())
+        }
+
+        private fun encodeModelMetadataByProvider(
+            map: Map<String, Map<String, SelectedModelConfigEntry>>,
+        ): String {
+            val root = org.json.JSONObject()
+            map.forEach { (providerKey, metadataById) ->
+                val provider = normalizeProvider(providerKey)
+                if (provider.isBlank()) return@forEach
+                val providerObject = org.json.JSONObject()
+                metadataById.forEach { (modelIdKey, entry) ->
+                    val modelId = modelIdKey.trim()
+                    if (modelId.isBlank()) return@forEach
+                    providerObject.put(
+                        modelId,
+                        org.json.JSONObject().apply {
+                            put("supportsReasoning", entry.supportsReasoning)
+                            put("supportsImages", entry.supportsImages)
+                            put("contextLength", entry.contextLength.coerceAtLeast(1))
+                            put("maxOutputTokens", entry.maxOutputTokens.coerceAtLeast(1))
+                        },
+                    )
+                }
+                if (providerObject.length() > 0) {
+                    root.put(provider, providerObject)
+                }
+            }
+            return root.toString()
+        }
+
+        private fun decodeOpenAiCompatibleProfiles(raw: String?): List<OpenAiCompatibleProfile> {
+            if (raw.isNullOrBlank()) return emptyList()
+            return runCatching {
+                val array = org.json.JSONArray(raw)
+                buildList {
+                    for (index in 0 until array.length()) {
+                        val obj = array.optJSONObject(index) ?: continue
+                        val id = obj.optString("id").trim()
+                        val name = obj.optString("name").trim()
+                        val baseUrl = obj.optString("baseUrl").trim()
+                        val apiKey = obj.optString("apiKey")
+                        if (id.isBlank()) continue
+                        val selectedModels = buildList {
+                            val modelsArray = obj.optJSONArray("selectedModels")
+                            if (modelsArray != null) {
+                                for (modelIndex in 0 until modelsArray.length()) {
+                                    val modelId = modelsArray.optString(modelIndex).trim()
+                                    if (modelId.isNotBlank() && modelId !in this) add(modelId)
+                                }
+                            }
+                        }
+                        val primaryModel = obj.optString("primaryModel").trim().ifBlank { null }
+                        add(
+                            OpenAiCompatibleProfile(
+                                id = id,
+                                name = name.ifBlank { id },
+                                baseUrl = baseUrl.ifBlank { "https://api.openai.com/v1" },
+                                apiKey = apiKey,
+                                selectedModels = selectedModels,
+                                primaryModel = primaryModel,
+                            ),
+                        )
+                    }
+                }
+            }.getOrDefault(emptyList())
+        }
+
+        private fun encodeOpenAiCompatibleProfiles(
+            profiles: List<OpenAiCompatibleProfile>,
+        ): String {
+            val array = org.json.JSONArray()
+            profiles.forEach { profile ->
+                val id = profile.id.trim()
+                if (id.isBlank()) return@forEach
+                val selectedModels = org.json.JSONArray()
+                profile.selectedModels
+                    .map { it.trim() }
+                    .filter { it.isNotBlank() }
+                    .distinct()
+                    .forEach(selectedModels::put)
+                array.put(
+                    org.json.JSONObject().apply {
+                        put("id", id)
+                        put("name", profile.name.trim().ifBlank { id })
+                        put("baseUrl", profile.baseUrl.trim().ifBlank { "https://api.openai.com/v1" })
+                        put("apiKey", profile.apiKey)
+                        put("selectedModels", selectedModels)
+                        put("primaryModel", profile.primaryModel?.trim().orEmpty())
+                    },
+                )
+            }
+            return array.toString()
+        }
     }
 
     val isSetupComplete: Flow<Boolean> = context.dataStore.data.map { prefs ->
@@ -134,22 +535,73 @@ class PreferencesManager(private val context: Context) {
         context.dataStore.data,
     ) { provider, prefs ->
         val legacy = prefs[KEY_API_KEY] ?: ""
+        val profiles = decodeOpenAiCompatibleProfiles(prefs[KEY_OPENAI_COMPATIBLE_PROFILES_JSON])
+        val activeProfileId = prefs[KEY_ACTIVE_OPENAI_COMPATIBLE_PROFILE_ID].orEmpty().trim()
+        val activeProfile = profiles.firstOrNull { it.id == activeProfileId } ?: profiles.firstOrNull()
         when (provider) {
             "openrouter" -> prefs[KEY_API_KEY_OPENROUTER] ?: legacy
             "anthropic" -> prefs[KEY_API_KEY_ANTHROPIC] ?: ""
             "openai" -> prefs[KEY_API_KEY_OPENAI] ?: ""
-            "openai-compatible" -> prefs[KEY_API_KEY_OPENAI_COMPATIBLE] ?: ""
+            "openai-compatible" -> activeProfile?.apiKey?.trim().orEmpty()
+                .ifBlank { prefs[KEY_API_KEY_OPENAI_COMPATIBLE].orEmpty() }
             "google" -> prefs[KEY_API_KEY_GOOGLE] ?: ""
             else -> legacy
         }
     }
 
     val openAiCompatibleBaseUrl: Flow<String> = context.dataStore.data.map { prefs ->
-        prefs[KEY_OPENAI_COMPATIBLE_BASE_URL] ?: "https://api.openai.com/v1"
+        val profiles = decodeOpenAiCompatibleProfiles(prefs[KEY_OPENAI_COMPATIBLE_PROFILES_JSON])
+        val activeProfileId = prefs[KEY_ACTIVE_OPENAI_COMPATIBLE_PROFILE_ID].orEmpty().trim()
+        val activeProfile = profiles.firstOrNull { it.id == activeProfileId } ?: profiles.firstOrNull()
+        activeProfile?.baseUrl ?: (prefs[KEY_OPENAI_COMPATIBLE_BASE_URL] ?: "https://api.openai.com/v1")
     }
 
     val openAiCompatibleModelId: Flow<String> = context.dataStore.data.map { prefs ->
-        prefs[KEY_OPENAI_COMPATIBLE_MODEL_ID] ?: "gpt-4o-mini"
+        resolveOpenAiCompatibleModelId(prefs)
+    }
+
+    private fun resolveOpenAiCompatibleModelId(prefs: Preferences): String {
+        val profiles = decodeOpenAiCompatibleProfiles(prefs[KEY_OPENAI_COMPATIBLE_PROFILES_JSON])
+        val activeProfileId = prefs[KEY_ACTIVE_OPENAI_COMPATIBLE_PROFILE_ID].orEmpty().trim()
+        val activeProfile = profiles.firstOrNull { it.id == activeProfileId } ?: profiles.firstOrNull()
+        val legacyModelId = prefs[KEY_OPENAI_COMPATIBLE_MODEL_ID]
+            ?.trim()
+            .orEmpty()
+            .removePrefix("openai-compatible/")
+        val profileModelId = activeProfile?.primaryModel
+            ?.trim()
+            .orEmpty()
+            .removePrefix("openai-compatible/")
+        val activeProfileSelectedIds = activeProfile?.selectedModels
+            .orEmpty()
+            .map { it.trim().removePrefix("openai-compatible/") }
+            .filter { it.isNotBlank() }
+            .distinct()
+        return if (activeProfile != null) {
+            profileModelId.ifBlank {
+                legacyModelId.takeIf {
+                    it.isNotBlank() &&
+                        (activeProfileSelectedIds.isEmpty() || activeProfileSelectedIds.contains(it))
+                }.orEmpty()
+            }
+        } else {
+            legacyModelId
+        }
+    }
+
+    val openAiCompatibleProfiles: Flow<List<OpenAiCompatibleProfile>> = context.dataStore.data.map { prefs ->
+        decodeOpenAiCompatibleProfiles(prefs[KEY_OPENAI_COMPATIBLE_PROFILES_JSON])
+    }
+
+    val activeOpenAiCompatibleProfileId: Flow<String> = context.dataStore.data.map { prefs ->
+        prefs[KEY_ACTIVE_OPENAI_COMPATIBLE_PROFILE_ID].orEmpty().trim()
+    }
+
+    private val activeOpenAiCompatibleProfile: Flow<OpenAiCompatibleProfile?> = combine(
+        openAiCompatibleProfiles,
+        activeOpenAiCompatibleProfileId,
+    ) { profiles, activeProfileId ->
+        profiles.firstOrNull { it.id == activeProfileId } ?: profiles.firstOrNull()
     }
 
     val autoStartOnBoot: Flow<Boolean> = context.dataStore.data.map { prefs ->
@@ -168,6 +620,96 @@ class PreferencesManager(private val context: Context) {
         prefs[KEY_SELECTED_MODEL] ?: ""
     }
 
+    private fun resolveSelectedModelProvider(
+        snapshot: Preferences,
+        selectedByProviderInput: Map<String, List<String>>? = null,
+    ): String {
+        val explicitProvider = normalizeProvider(snapshot[KEY_SELECTED_MODEL_PROVIDER].orEmpty())
+        if (explicitProvider.isNotBlank()) return explicitProvider
+
+        return normalizeProvider(snapshot[KEY_API_PROVIDER] ?: "openrouter")
+    }
+
+    private fun resolveActiveOpenAiCompatibleProfile(
+        snapshot: Preferences,
+        profilesInput: List<OpenAiCompatibleProfile>? = null,
+    ): OpenAiCompatibleProfile? {
+        val profiles = profilesInput ?: decodeOpenAiCompatibleProfiles(snapshot[KEY_OPENAI_COMPATIBLE_PROFILES_JSON])
+        val activeProfileId = snapshot[KEY_ACTIVE_OPENAI_COMPATIBLE_PROFILE_ID].orEmpty().trim()
+        return profiles.firstOrNull { it.id == activeProfileId } ?: profiles.firstOrNull()
+    }
+
+    private fun resolveStoredSelectedIdsForProvider(
+        snapshot: Preferences,
+        provider: String,
+        selectedByProviderInput: Map<String, List<String>>? = null,
+        activeProfileInput: OpenAiCompatibleProfile? = null,
+        includeLegacyGlobalFallback: Boolean = false,
+    ): List<String> {
+        val normalizedProvider = normalizeProvider(provider)
+        val selectedByProvider = selectedByProviderInput
+            ?: decodeStringListMap(snapshot[KEY_SELECTED_MODELS_BY_PROVIDER_JSON])
+        val selectedFromProvider = selectedByProvider[normalizedProvider].orEmpty()
+            .map { canonicalizeModelIdForProvider(normalizedProvider, it) }
+            .filter { isLegacyModelCompatibleWithProvider(normalizedProvider, it) }
+            .distinct()
+        if (selectedFromProvider.isNotEmpty()) {
+            return selectedFromProvider
+        }
+
+        if (normalizedProvider == "openai-compatible") {
+            val activeProfile = activeProfileInput ?: resolveActiveOpenAiCompatibleProfile(snapshot)
+            val selectedFromProfile = activeProfile?.selectedModels
+                .orEmpty()
+                .map { canonicalizeModelIdForProvider(normalizedProvider, it) }
+                .filter { it.isNotBlank() }
+                .distinct()
+            if (selectedFromProfile.isNotEmpty()) {
+                return selectedFromProfile
+            }
+        }
+
+        if (!includeLegacyGlobalFallback) return emptyList()
+
+        val globalPrimaryProvider = resolveSelectedModelProvider(
+            snapshot = snapshot,
+            selectedByProviderInput = selectedByProvider,
+        )
+        val legacySelectedModelRaw = snapshot[KEY_SELECTED_MODEL].orEmpty().trim()
+        val canonicalLegacyModelId = canonicalizeModelIdForProvider(normalizedProvider, legacySelectedModelRaw)
+        return canonicalLegacyModelId
+            .takeIf {
+                globalPrimaryProvider == normalizedProvider &&
+                    isLegacyModelCompatibleWithProvider(normalizedProvider, it)
+            }
+            ?.let(::listOf)
+            .orEmpty()
+    }
+
+    private fun resolveStableSelectedModelProviderForBackfill(
+        snapshot: Preferences,
+        selectedByProviderInput: Map<String, List<String>>? = null,
+    ): String {
+        val explicitProvider = normalizeProvider(snapshot[KEY_SELECTED_MODEL_PROVIDER].orEmpty())
+        if (explicitProvider.isNotBlank()) return explicitProvider
+
+        // 레거시 selected_model_provider 백필은 "마지막으로 저장된 설정 탭 provider"를 그대로 복원한다.
+        // selected_model / compat profile / 현재 후보 모델로 owner를 추론하면
+        // 업그레이드 시 compat/openrouter owner가 뒤집히는 회귀가 반복돼서 여기서는 추론을 금지한다.
+        return normalizeProvider(snapshot[KEY_API_PROVIDER] ?: "openrouter")
+    }
+
+    val selectedModelProvider: Flow<String> = context.dataStore.data.map { prefs ->
+        resolveSelectedModelProvider(prefs)
+    }
+
+    private val globalPrimarySelection: Flow<Pair<String, String>> = combine(
+        selectedModel,
+        selectedModelProvider,
+    ) { modelId, provider ->
+        modelId to provider
+    }
+
     val selectedModelReasoning: Flow<Boolean> = context.dataStore.data.map { prefs ->
         prefs[KEY_SELECTED_MODEL_REASONING] ?: false
     }
@@ -184,6 +726,171 @@ class PreferencesManager(private val context: Context) {
         prefs[KEY_SELECTED_MODEL_MAX_OUTPUT]?.toIntOrNull() ?: 4096
     }
 
+    val selectedModelsByProvider: Flow<Map<String, List<String>>> = context.dataStore.data.map { prefs ->
+        decodeStringListMap(prefs[KEY_SELECTED_MODELS_BY_PROVIDER_JSON])
+    }
+
+    val selectedModelMetadataByProvider: Flow<Map<String, Map<String, SelectedModelConfigEntry>>> =
+        context.dataStore.data.map { prefs ->
+            decodeModelMetadataByProvider(prefs[KEY_MODEL_METADATA_BY_PROVIDER_JSON])
+                .mapValues { (provider, metadataById) ->
+                    canonicalizeMetadataByIdForProvider(provider, metadataById)
+                }
+        }
+
+    val currentProviderSelectedModelIds: Flow<List<String>> = combine(
+        apiProvider,
+        selectedModelsByProvider,
+        selectedModel,
+        selectedModelProvider,
+        activeOpenAiCompatibleProfile,
+    ) { provider, selectedByProvider, legacySelectedModel, globalPrimaryProvider, activeProfile ->
+        val normalizedProvider = normalizeProvider(provider)
+        val fromMulti = selectedByProvider[normalizedProvider]
+            .orEmpty()
+            .map { canonicalizeModelIdForProvider(normalizedProvider, it) }
+            .filter { it.isNotBlank() }
+            .distinct()
+        if (fromMulti.isNotEmpty()) {
+            return@combine fromMulti
+        }
+        if (normalizedProvider == "openai-compatible") {
+            val profileSelectedIds = activeProfile?.selectedModels
+                .orEmpty()
+                .map { it.trim().removePrefix("openai-compatible/") }
+                .filter { it.isNotBlank() }
+                .distinct()
+            if (profileSelectedIds.isNotEmpty()) {
+                return@combine profileSelectedIds
+            }
+        }
+        if (globalPrimaryProvider != normalizedProvider) {
+            return@combine emptyList()
+        }
+        val canonicalLegacyModelId = canonicalizeModelIdForProvider(normalizedProvider, legacySelectedModel)
+        canonicalLegacyModelId
+            .takeIf { isLegacyModelCompatibleWithProvider(normalizedProvider, it) }
+            ?.let(::listOf)
+            .orEmpty()
+    }
+
+    val currentProviderPrimaryModelId: Flow<String> = combine(
+        apiProvider,
+        currentProviderSelectedModelIds,
+        globalPrimarySelection,
+        openAiCompatibleModelId,
+    ) { provider, selectedModelIds, globalPrimarySelection, compatPrimaryModelId ->
+        if (selectedModelIds.isEmpty()) return@combine ""
+        val normalizedProvider = normalizeProvider(provider)
+        val legacySelectedModel = globalPrimarySelection.first
+        val globalPrimaryProvider = globalPrimarySelection.second
+        val normalizedLegacyModelId = canonicalizeModelIdForProvider(normalizedProvider, legacySelectedModel)
+        when {
+            // Non-compat providers do not keep a separate provider-local primary anymore.
+            // A radio selection is meaningful only for the single global primary model.
+            normalizedLegacyModelId.isNotBlank() &&
+                globalPrimaryProvider == normalizedProvider &&
+                selectedModelIds.contains(normalizedLegacyModelId) &&
+                isLegacyModelCompatibleWithProvider(normalizedProvider, normalizedLegacyModelId) ->
+                normalizedLegacyModelId
+
+            normalizedProvider == "openai-compatible" -> {
+                val profilePrimary = compatPrimaryModelId
+                    .trim()
+                    .removePrefix("openai-compatible/")
+                profilePrimary.takeIf { it.isNotBlank() && selectedModelIds.contains(it) }.orEmpty()
+            }
+
+            else -> ""
+        }
+    }
+
+    val currentProviderGlobalPrimaryModelId: Flow<String> = combine(
+        apiProvider,
+        currentProviderSelectedModelIds,
+        globalPrimarySelection,
+    ) { provider, selectedModelIds, globalPrimarySelection ->
+        if (selectedModelIds.isEmpty()) return@combine ""
+        val normalizedProvider = normalizeProvider(provider)
+        val legacySelectedModel = globalPrimarySelection.first
+        val globalPrimaryProvider = globalPrimarySelection.second
+        val normalizedLegacyModelId = canonicalizeModelIdForProvider(normalizedProvider, legacySelectedModel)
+        when {
+            normalizedLegacyModelId.isNotBlank() &&
+                globalPrimaryProvider == normalizedProvider &&
+                selectedModelIds.contains(normalizedLegacyModelId) &&
+                isLegacyModelCompatibleWithProvider(normalizedProvider, normalizedLegacyModelId) ->
+                normalizedLegacyModelId
+
+            else -> ""
+        }
+    }
+
+    private val currentProviderLegacySelectedModelEntry: Flow<SelectedModelConfigEntry?> = combine(
+        selectedModel,
+        selectedModelReasoning,
+        selectedModelImages,
+        selectedModelContext,
+        selectedModelMaxOutput,
+    ) { legacySelectedModel, legacyReasoning, legacyImages, legacyContext, legacyMaxOutput ->
+        legacySelectedModel.trim()
+            .takeIf { it.isNotBlank() }
+            ?.let { modelId ->
+                SelectedModelConfigEntry(
+                    id = modelId,
+                    supportsReasoning = legacyReasoning,
+                    supportsImages = legacyImages,
+                    contextLength = legacyContext.coerceAtLeast(1),
+                    maxOutputTokens = legacyMaxOutput.coerceAtLeast(1),
+                )
+            }
+    }
+
+    val currentProviderSelectedModelEntries: Flow<List<SelectedModelConfigEntry>> = combine(
+        apiProvider,
+        currentProviderSelectedModelIds,
+        selectedModelMetadataByProvider,
+        currentProviderLegacySelectedModelEntry,
+    ) { provider, selectedModelIds, metadataByProvider, legacySelectedModelEntry ->
+        val normalizedProvider = normalizeProvider(provider)
+        val metadataById = canonicalizeMetadataByIdForProvider(
+            normalizedProvider,
+            metadataByProvider[normalizedProvider].orEmpty(),
+        )
+        selectedModelIds.map { modelId ->
+            metadataById[modelId]
+                ?: legacySelectedModelEntry?.takeIf {
+                    canonicalizeModelIdForProvider(normalizedProvider, it.id) == modelId
+                }?.copy(id = modelId)
+                ?: defaultModelMetadata(modelId)
+        }
+    }
+
+    val globalDefaultModelOptions: Flow<List<GlobalDefaultModelOption>> = context.dataStore.data.map { prefs ->
+        val selectedByProvider = decodeStringListMap(prefs[KEY_SELECTED_MODELS_BY_PROVIDER_JSON])
+        val profiles = decodeOpenAiCompatibleProfiles(prefs[KEY_OPENAI_COMPATIBLE_PROFILES_JSON])
+        val activeProfileId = prefs[KEY_ACTIVE_OPENAI_COMPATIBLE_PROFILE_ID].orEmpty().trim()
+        val activeProfile = profiles.firstOrNull { it.id == activeProfileId } ?: profiles.firstOrNull()
+        buildList {
+            MODEL_SELECTION_PROVIDERS.forEach { provider ->
+                resolveStoredSelectedIdsForProvider(
+                    snapshot = prefs,
+                    provider = provider,
+                    selectedByProviderInput = selectedByProvider,
+                    activeProfileInput = activeProfile,
+                    includeLegacyGlobalFallback = true,
+                ).forEach { modelId ->
+                    add(
+                        GlobalDefaultModelOption(
+                            provider = provider,
+                            modelId = canonicalizeModelIdForProvider(provider, modelId),
+                        ),
+                    )
+                }
+            }
+        }.distinct()
+    }
+
     suspend fun setSetupComplete(complete: Boolean) {
         context.dataStore.edit { it[KEY_SETUP_COMPLETE] = complete }
     }
@@ -194,22 +901,148 @@ class PreferencesManager(private val context: Context) {
 
     suspend fun setApiProvider(provider: String) {
         val normalizedProvider = if (provider == "nvidia") "openrouter" else provider
-        context.dataStore.edit { it[KEY_API_PROVIDER] = normalizedProvider }
+        context.dataStore.edit { prefs ->
+            val selectedModelProvider = normalizeProvider(prefs[KEY_SELECTED_MODEL_PROVIDER].orEmpty())
+            val selectedByProvider = decodeStringListMap(prefs[KEY_SELECTED_MODELS_BY_PROVIDER_JSON]).toMutableMap()
+            val metadataByProvider = decodeModelMetadataByProvider(prefs[KEY_MODEL_METADATA_BY_PROVIDER_JSON]).toMutableMap()
+            val activeProfile = resolveActiveOpenAiCompatibleProfile(prefs)
+            if (selectedModelProvider.isBlank()) {
+                val stableLegacyOwner = resolveStableSelectedModelProviderForBackfill(
+                    snapshot = prefs,
+                    selectedByProviderInput = selectedByProvider,
+                )
+                if (stableLegacyOwner.isNotBlank()) {
+                    prefs[KEY_SELECTED_MODEL_PROVIDER] = stableLegacyOwner
+                }
+            }
+            prefs[KEY_API_PROVIDER] = normalizedProvider
+
+            val providerKey = normalizeProvider(normalizedProvider)
+            val selectedIds = resolveStoredSelectedIdsForProvider(
+                snapshot = prefs,
+                provider = providerKey,
+                selectedByProviderInput = selectedByProvider,
+                activeProfileInput = activeProfile,
+            )
+            if (selectedIds.isNotEmpty()) {
+                selectedByProvider[providerKey] = selectedIds
+                val sanitizedMetadata = canonicalizeMetadataByIdForProvider(
+                    providerKey,
+                    metadataByProvider[providerKey].orEmpty(),
+                ).filterKeys(selectedIds::contains)
+                if (sanitizedMetadata.isNotEmpty()) {
+                    metadataByProvider[providerKey] = sanitizedMetadata
+                } else {
+                    metadataByProvider.remove(providerKey)
+                }
+            } else {
+                selectedByProvider.remove(providerKey)
+                metadataByProvider.remove(providerKey)
+            }
+
+            if (selectedByProvider.isEmpty()) {
+                prefs.remove(KEY_SELECTED_MODELS_BY_PROVIDER_JSON)
+            } else {
+                prefs[KEY_SELECTED_MODELS_BY_PROVIDER_JSON] = encodeStringListMap(selectedByProvider)
+            }
+            prefs.remove(KEY_PRIMARY_MODEL_BY_PROVIDER_JSON)
+            if (metadataByProvider.isEmpty()) {
+                prefs.remove(KEY_MODEL_METADATA_BY_PROVIDER_JSON)
+            } else {
+                prefs[KEY_MODEL_METADATA_BY_PROVIDER_JSON] = encodeModelMetadataByProvider(metadataByProvider)
+            }
+        }
     }
 
     suspend fun setApiKey(key: String) {
         val provider = apiProvider.first()
+        setApiKeyForProvider(provider = provider, key = key, updateLegacyKey = true)
+    }
+
+    suspend fun setApiKeyForProvider(
+        provider: String,
+        key: String,
+        updateLegacyKey: Boolean = false,
+    ) {
+        val normalizedProvider = normalizeProvider(provider)
         context.dataStore.edit {
-            // 레거시 키 유지 (하위 호환)
-            it[KEY_API_KEY] = key
-            when (provider) {
-                "openrouter" -> it[KEY_API_KEY_OPENROUTER] = key
+            if (updateLegacyKey) {
+                // 레거시 키 유지 (하위 호환)
+                it[KEY_API_KEY] = key
+            }
+            when (normalizedProvider) {
+                "openrouter" -> {
+                    it[KEY_API_KEY_OPENROUTER] = key
+                    if (updateLegacyKey) {
+                        it[KEY_API_KEY] = key
+                    }
+                }
                 "anthropic" -> it[KEY_API_KEY_ANTHROPIC] = key
                 "openai", "openai-codex" -> it[KEY_API_KEY_OPENAI] = key
-                "openai-compatible" -> it[KEY_API_KEY_OPENAI_COMPATIBLE] = key
+                "openai-compatible" -> {
+                    it[KEY_API_KEY_OPENAI_COMPATIBLE] = key
+                    val profiles = decodeOpenAiCompatibleProfiles(it[KEY_OPENAI_COMPATIBLE_PROFILES_JSON])
+                        .map { profile ->
+                            val normalizedSelectedModels = profile.selectedModels
+                                .map { modelId -> canonicalizeModelIdForProvider("openai-compatible", modelId) }
+                                .filter { modelId -> modelId.isNotBlank() }
+                                .distinct()
+                            val normalizedPrimaryModel = canonicalizeModelIdForProvider(
+                                "openai-compatible",
+                                profile.primaryModel.orEmpty(),
+                            ).ifBlank { null }
+                            profile.copy(
+                                selectedModels = normalizedSelectedModels,
+                                primaryModel = normalizedPrimaryModel,
+                            )
+                        }
+                        .toMutableList()
+                    val activeProfileId = it[KEY_ACTIVE_OPENAI_COMPATIBLE_PROFILE_ID].orEmpty().trim()
+                    if (profiles.isEmpty()) {
+                        val normalizedLegacyModelId = canonicalizeModelIdForProvider(
+                            "openai-compatible",
+                            it[KEY_OPENAI_COMPATIBLE_MODEL_ID].orEmpty(),
+                        )
+                        profiles += OpenAiCompatibleProfile(
+                            id = "default",
+                            name = "Default",
+                            baseUrl = it[KEY_OPENAI_COMPATIBLE_BASE_URL] ?: "https://api.openai.com/v1",
+                            apiKey = key,
+                            selectedModels = normalizedLegacyModelId.takeIf { it.isNotBlank() }?.let(::listOf).orEmpty(),
+                            primaryModel = normalizedLegacyModelId.ifBlank { null },
+                        )
+                        it[KEY_ACTIVE_OPENAI_COMPATIBLE_PROFILE_ID] = "default"
+                    } else {
+                        val targetIndex = profiles.indexOfFirst { profile -> profile.id == activeProfileId }
+                            .takeIf { index -> index >= 0 }
+                            ?: 0
+                        val target = profiles[targetIndex]
+                        profiles[targetIndex] = target.copy(apiKey = key)
+                    }
+                    it[KEY_OPENAI_COMPATIBLE_PROFILES_JSON] = encodeOpenAiCompatibleProfiles(profiles)
+                }
                 "google" -> it[KEY_API_KEY_GOOGLE] = key
                 else -> { /* no-op */ }
             }
+        }
+    }
+
+    suspend fun getApiKeyForProvider(provider: String): String {
+        val snapshot = context.dataStore.data.first()
+        val legacy = snapshot[KEY_API_KEY].orEmpty()
+        return when (normalizeProvider(provider)) {
+            "openrouter" -> snapshot[KEY_API_KEY_OPENROUTER] ?: legacy
+            "anthropic" -> snapshot[KEY_API_KEY_ANTHROPIC].orEmpty()
+            "openai", "openai-codex" -> snapshot[KEY_API_KEY_OPENAI].orEmpty()
+            "openai-compatible" -> {
+                val profiles = decodeOpenAiCompatibleProfiles(snapshot[KEY_OPENAI_COMPATIBLE_PROFILES_JSON])
+                val activeProfileId = snapshot[KEY_ACTIVE_OPENAI_COMPATIBLE_PROFILE_ID].orEmpty().trim()
+                val activeProfile = profiles.firstOrNull { it.id == activeProfileId } ?: profiles.firstOrNull()
+                activeProfile?.apiKey?.trim().orEmpty()
+                    .ifBlank { snapshot[KEY_API_KEY_OPENAI_COMPATIBLE].orEmpty() }
+            }
+            "google" -> snapshot[KEY_API_KEY_GOOGLE].orEmpty()
+            else -> legacy
         }
     }
 
@@ -220,19 +1053,91 @@ class PreferencesManager(private val context: Context) {
             "openrouter" -> snapshot[KEY_API_KEY_OPENROUTER] ?: legacy
             "anthropic" -> snapshot[KEY_API_KEY_ANTHROPIC].orEmpty()
             "openai" -> snapshot[KEY_API_KEY_OPENAI].orEmpty()
-            "openai-compatible" -> snapshot[KEY_API_KEY_OPENAI_COMPATIBLE].orEmpty()
+            "openai-compatible" -> {
+                val profiles = decodeOpenAiCompatibleProfiles(snapshot[KEY_OPENAI_COMPATIBLE_PROFILES_JSON])
+                val activeProfileId = snapshot[KEY_ACTIVE_OPENAI_COMPATIBLE_PROFILE_ID].orEmpty().trim()
+                val activeProfile = profiles.firstOrNull { it.id == activeProfileId } ?: profiles.firstOrNull()
+                activeProfile?.apiKey?.trim().orEmpty()
+                    .ifBlank { snapshot[KEY_API_KEY_OPENAI_COMPATIBLE].orEmpty() }
+            }
             "google" -> snapshot[KEY_API_KEY_GOOGLE].orEmpty()
             else -> legacy
         }
         return key.isNotBlank()
     }
 
+    suspend fun getLaunchApiKeyWarning(): LaunchApiKeyWarning {
+        val launchConfig = getGatewayLaunchConfigSnapshot()
+        if (launchConfig.selectedModelEntries.isEmpty()) {
+            return LaunchApiKeyWarning(
+                shouldWarn = false,
+                provider = launchConfig.apiProvider,
+                hasSelectedModels = false,
+            )
+        }
+        val shouldWarn = when (launchConfig.apiProvider) {
+            "openai-codex" -> false
+            "openai-compatible" -> {
+                launchConfig.apiKey.isBlank() &&
+                    !isKnownKeylessOpenAiCompatibleBaseUrl(launchConfig.openAiCompatibleBaseUrl)
+            }
+            else -> launchConfig.apiKey.isBlank()
+        }
+        return LaunchApiKeyWarning(
+            shouldWarn = shouldWarn,
+            provider = launchConfig.apiProvider,
+            hasSelectedModels = true,
+        )
+    }
+
+    suspend fun shouldWarnApiKeyForLaunch(): Boolean = getLaunchApiKeyWarning().shouldWarn
+
     suspend fun setOpenAiCompatibleBaseUrl(baseUrl: String) {
-        context.dataStore.edit { it[KEY_OPENAI_COMPATIBLE_BASE_URL] = baseUrl }
+        context.dataStore.edit { prefs ->
+            prefs[KEY_OPENAI_COMPATIBLE_BASE_URL] = baseUrl
+            val profiles = decodeOpenAiCompatibleProfiles(prefs[KEY_OPENAI_COMPATIBLE_PROFILES_JSON]).toMutableList()
+            if (profiles.isEmpty()) return@edit
+            val activeProfileId = prefs[KEY_ACTIVE_OPENAI_COMPATIBLE_PROFILE_ID].orEmpty().trim()
+            val targetIndex = profiles.indexOfFirst { it.id == activeProfileId }
+                .takeIf { it >= 0 }
+                ?: 0
+            profiles[targetIndex] = profiles[targetIndex].copy(baseUrl = baseUrl.trim().ifBlank { "https://api.openai.com/v1" })
+            prefs[KEY_OPENAI_COMPATIBLE_PROFILES_JSON] = encodeOpenAiCompatibleProfiles(profiles)
+        }
     }
 
     suspend fun setOpenAiCompatibleModelId(modelId: String) {
-        context.dataStore.edit { it[KEY_OPENAI_COMPATIBLE_MODEL_ID] = modelId }
+        context.dataStore.edit { prefs ->
+            val normalizedModelId = modelId.trim().removePrefix("openai-compatible/")
+            if (normalizedModelId.isBlank()) {
+                prefs.remove(KEY_OPENAI_COMPATIBLE_MODEL_ID)
+            } else {
+                prefs[KEY_OPENAI_COMPATIBLE_MODEL_ID] = normalizedModelId
+            }
+            val profiles = decodeOpenAiCompatibleProfiles(prefs[KEY_OPENAI_COMPATIBLE_PROFILES_JSON]).toMutableList()
+            if (profiles.isEmpty()) return@edit
+            val activeProfileId = prefs[KEY_ACTIVE_OPENAI_COMPATIBLE_PROFILE_ID].orEmpty().trim()
+            val targetIndex = profiles.indexOfFirst { it.id == activeProfileId }
+                .takeIf { it >= 0 }
+                ?: 0
+            val target = profiles[targetIndex]
+            val existingSelectedModels = target.selectedModels
+                .map { it.trim().removePrefix("openai-compatible/") }
+                .filter { it.isNotBlank() }
+            val selectedModels = if (normalizedModelId.isBlank()) {
+                existingSelectedModels.distinct()
+            } else {
+                buildList {
+                    add(normalizedModelId)
+                    addAll(existingSelectedModels.filterNot { it == normalizedModelId })
+                }.distinct()
+            }
+            profiles[targetIndex] = target.copy(
+                selectedModels = selectedModels,
+                primaryModel = normalizedModelId.ifBlank { null },
+            )
+            prefs[KEY_OPENAI_COMPATIBLE_PROFILES_JSON] = encodeOpenAiCompatibleProfiles(profiles)
+        }
     }
 
     suspend fun setAutoStartOnBoot(enabled: Boolean) {
@@ -248,17 +1153,820 @@ class PreferencesManager(private val context: Context) {
     }
 
     suspend fun setSelectedModel(model: OpenRouterModel) {
+        val provider = apiProvider.first()
+        val normalizedModelId = canonicalizeModelIdForProvider(provider, model.id)
         context.dataStore.edit {
-            it[KEY_SELECTED_MODEL] = model.id
+            it[KEY_SELECTED_MODEL] = normalizedModelId
+            it[KEY_SELECTED_MODEL_PROVIDER] = normalizeProvider(provider)
             it[KEY_SELECTED_MODEL_REASONING] = model.supportsReasoning
             it[KEY_SELECTED_MODEL_IMAGES] = model.supportsImages
             it[KEY_SELECTED_MODEL_CONTEXT] = model.contextLength.toString()
             it[KEY_SELECTED_MODEL_MAX_OUTPUT] = model.maxOutputTokens.toString()
         }
+        setSelectedModels(provider, listOf(model), primary = model.id)
     }
 
     suspend fun setSelectedModelId(modelId: String) {
-        context.dataStore.edit { it[KEY_SELECTED_MODEL] = modelId }
+        val provider = apiProvider.first()
+        val normalizedModelId = canonicalizeModelIdForProvider(provider, modelId)
+        context.dataStore.edit {
+            it[KEY_SELECTED_MODEL] = normalizedModelId
+            if (normalizedModelId.isBlank()) {
+                it.remove(KEY_SELECTED_MODEL_PROVIDER)
+            } else {
+                it[KEY_SELECTED_MODEL_PROVIDER] = normalizeProvider(provider)
+            }
+        }
+        if (normalizedModelId.isBlank()) {
+            clearSelectedModels(provider)
+            return
+        }
+        val fallbackMetadata = SelectedModelConfigEntry(
+            id = normalizedModelId,
+            supportsReasoning = false,
+            supportsImages = false,
+            contextLength = 200000,
+            maxOutputTokens = 4096,
+        )
+        setSelectedModelIds(
+            provider = provider,
+            modelIds = listOf(normalizedModelId),
+            primary = normalizedModelId,
+            metadataById = mapOf(normalizedModelId to fallbackMetadata),
+        )
+    }
+
+    suspend fun setSelectedModels(
+        provider: String,
+        models: List<OpenRouterModel>,
+        primary: String? = null,
+    ) {
+        val metadataById = models.associate { model ->
+            model.id to SelectedModelConfigEntry(
+                id = model.id,
+                supportsReasoning = model.supportsReasoning,
+                supportsImages = model.supportsImages,
+                contextLength = model.contextLength,
+                maxOutputTokens = model.maxOutputTokens,
+            )
+        }
+        setSelectedModelIds(
+            provider = provider,
+            modelIds = models.map { it.id },
+            primary = primary,
+            metadataById = metadataById,
+        )
+    }
+
+    suspend fun setSelectedModelsWithoutActivatingProvider(
+        provider: String,
+        models: List<OpenRouterModel>,
+        primary: String? = null,
+    ) {
+        val metadataById = models.associate { model ->
+            model.id to SelectedModelConfigEntry(
+                id = model.id,
+                supportsReasoning = model.supportsReasoning,
+                supportsImages = model.supportsImages,
+                contextLength = model.contextLength,
+                maxOutputTokens = model.maxOutputTokens,
+            )
+        }
+        setSelectedModelIdsInternal(
+            provider = provider,
+            modelIds = models.map { it.id },
+            primary = primary,
+            metadataById = metadataById,
+            activateProvider = false,
+        )
+    }
+
+    suspend fun setSelectedModelIds(
+        provider: String,
+        modelIds: List<String>,
+        primary: String? = null,
+        metadataById: Map<String, SelectedModelConfigEntry> = emptyMap(),
+    ) {
+        setSelectedModelIdsInternal(
+            provider = provider,
+            modelIds = modelIds,
+            primary = primary,
+            metadataById = metadataById,
+            activateProvider = true,
+        )
+    }
+
+    private suspend fun setSelectedModelIdsInternal(
+        provider: String,
+        modelIds: List<String>,
+        primary: String? = null,
+        metadataById: Map<String, SelectedModelConfigEntry> = emptyMap(),
+        activateProvider: Boolean,
+    ) {
+        val normalizedProvider = normalizeProvider(provider)
+        val normalizedIds = modelIds
+            .map { canonicalizeModelIdForProvider(normalizedProvider, it) }
+            .filter { it.isNotBlank() }
+            .distinct()
+        context.dataStore.edit { prefs ->
+            val selectedByProvider = decodeStringListMap(prefs[KEY_SELECTED_MODELS_BY_PROVIDER_JSON]).toMutableMap()
+            val metadataByProvider = decodeModelMetadataByProvider(prefs[KEY_MODEL_METADATA_BY_PROVIDER_JSON]).toMutableMap()
+            val globalPrimaryProvider = resolveSelectedModelProvider(
+                snapshot = prefs,
+                selectedByProviderInput = selectedByProvider,
+            )
+
+            fun syncOpenAiCompatibleProfileSelection(
+                selectedModelIds: List<String>,
+                primaryModelId: String?,
+            ) {
+                if (normalizedProvider != "openai-compatible") return
+                val profiles = decodeOpenAiCompatibleProfiles(prefs[KEY_OPENAI_COMPATIBLE_PROFILES_JSON]).toMutableList()
+                val activeProfileId = prefs[KEY_ACTIVE_OPENAI_COMPATIBLE_PROFILE_ID].orEmpty().trim()
+                if (profiles.isEmpty()) {
+                    val createdProfileId = activeProfileId.ifBlank { "default" }
+                    profiles += OpenAiCompatibleProfile(
+                        id = createdProfileId,
+                        name = if (createdProfileId == "default") "Default" else createdProfileId,
+                        baseUrl = prefs[KEY_OPENAI_COMPATIBLE_BASE_URL] ?: "https://api.openai.com/v1",
+                        apiKey = prefs[KEY_API_KEY_OPENAI_COMPATIBLE].orEmpty(),
+                        selectedModels = selectedModelIds,
+                        primaryModel = primaryModelId,
+                    )
+                    prefs[KEY_ACTIVE_OPENAI_COMPATIBLE_PROFILE_ID] = createdProfileId
+                } else {
+                    val targetIndex = profiles.indexOfFirst { it.id == activeProfileId }
+                        .takeIf { it >= 0 }
+                        ?: 0
+                    val targetProfile = profiles[targetIndex]
+                    profiles[targetIndex] = targetProfile.copy(
+                        selectedModels = selectedModelIds,
+                        primaryModel = primaryModelId,
+                    )
+                    if (activeProfileId.isBlank()) {
+                        prefs[KEY_ACTIVE_OPENAI_COMPATIBLE_PROFILE_ID] = profiles[targetIndex].id
+                    }
+                }
+                prefs[KEY_OPENAI_COMPATIBLE_PROFILES_JSON] = encodeOpenAiCompatibleProfiles(profiles)
+            }
+
+            if (normalizedIds.isEmpty()) {
+                selectedByProvider.remove(normalizedProvider)
+                metadataByProvider.remove(normalizedProvider)
+                syncOpenAiCompatibleProfileSelection(emptyList(), null)
+                if (normalizedProvider == "openai-compatible") {
+                    prefs.remove(KEY_OPENAI_COMPATIBLE_MODEL_ID)
+                }
+                if (globalPrimaryProvider == normalizedProvider) {
+                    prefs[KEY_SELECTED_MODEL] = ""
+                    prefs.remove(KEY_SELECTED_MODEL_PROVIDER)
+                    prefs.remove(KEY_SELECTED_MODEL_REASONING)
+                    prefs.remove(KEY_SELECTED_MODEL_IMAGES)
+                    prefs.remove(KEY_SELECTED_MODEL_CONTEXT)
+                    prefs.remove(KEY_SELECTED_MODEL_MAX_OUTPUT)
+                }
+            } else {
+                selectedByProvider[normalizedProvider] = normalizedIds
+                val hasExplicitPrimaryDirective = primary != null
+                val requestedPrimary = canonicalizeModelIdForProvider(normalizedProvider, primary.orEmpty())
+                val explicitPrimary = requestedPrimary
+                    .takeIf { it.isNotBlank() && normalizedIds.contains(it) }
+                    .orEmpty()
+                val profiles = if (normalizedProvider == "openai-compatible") {
+                    decodeOpenAiCompatibleProfiles(prefs[KEY_OPENAI_COMPATIBLE_PROFILES_JSON])
+                } else {
+                    emptyList()
+                }
+                val activeProfileId = prefs[KEY_ACTIVE_OPENAI_COMPATIBLE_PROFILE_ID].orEmpty().trim()
+                val activeProfile = profiles.firstOrNull { it.id == activeProfileId } ?: profiles.firstOrNull()
+                val existingProfilePrimary = activeProfile?.primaryModel
+                    .orEmpty()
+                    .trim()
+                    .removePrefix("openai-compatible/")
+                    .takeIf { it.isNotBlank() && normalizedIds.contains(it) }
+                    .orEmpty()
+                val effectiveProfilePrimary = when {
+                    explicitPrimary.isNotBlank() -> explicitPrimary
+                    hasExplicitPrimaryDirective -> ""
+                    else -> existingProfilePrimary
+                }
+                syncOpenAiCompatibleProfileSelection(normalizedIds, effectiveProfilePrimary.ifBlank { null })
+
+                val providerMetadata = canonicalizeMetadataByIdForProvider(
+                    normalizedProvider,
+                    metadataByProvider[normalizedProvider].orEmpty(),
+                ).toMutableMap()
+                metadataById.forEach { (modelId, metadata) ->
+                    val normalizedModelId = canonicalizeModelIdForProvider(normalizedProvider, modelId)
+                    if (normalizedModelId.isBlank()) return@forEach
+                    providerMetadata[normalizedModelId] = metadata.copy(id = normalizedModelId)
+                }
+                providerMetadata.keys
+                    .filterNot { normalizedIds.contains(it) }
+                    .forEach(providerMetadata::remove)
+                if (providerMetadata.isNotEmpty()) {
+                    metadataByProvider[normalizedProvider] = providerMetadata
+                } else {
+                    metadataByProvider.remove(normalizedProvider)
+                }
+
+                if (explicitPrimary.isNotBlank()) {
+                    val metadataForLegacy = providerMetadata[explicitPrimary]
+                        ?: defaultModelMetadata(explicitPrimary)
+                    if (activateProvider || globalPrimaryProvider == normalizedProvider) {
+                        prefs[KEY_SELECTED_MODEL] = explicitPrimary
+                        prefs[KEY_SELECTED_MODEL_PROVIDER] = normalizedProvider
+                        prefs[KEY_SELECTED_MODEL_REASONING] = metadataForLegacy.supportsReasoning
+                        prefs[KEY_SELECTED_MODEL_IMAGES] = metadataForLegacy.supportsImages
+                        prefs[KEY_SELECTED_MODEL_CONTEXT] = metadataForLegacy.contextLength.toString()
+                        prefs[KEY_SELECTED_MODEL_MAX_OUTPUT] = metadataForLegacy.maxOutputTokens.toString()
+                    }
+                    if (activateProvider) {
+                        prefs[KEY_API_PROVIDER] = normalizedProvider
+                    }
+                    if (normalizedProvider == "openai-compatible") {
+                        prefs[KEY_OPENAI_COMPATIBLE_MODEL_ID] = explicitPrimary
+                    }
+                } else if (hasExplicitPrimaryDirective) {
+                    if (globalPrimaryProvider == normalizedProvider) {
+                        prefs[KEY_SELECTED_MODEL] = ""
+                        if (normalizedIds.isEmpty()) {
+                            prefs.remove(KEY_SELECTED_MODEL_PROVIDER)
+                        } else {
+                            prefs[KEY_SELECTED_MODEL_PROVIDER] = normalizedProvider
+                        }
+                        prefs.remove(KEY_SELECTED_MODEL_REASONING)
+                        prefs.remove(KEY_SELECTED_MODEL_IMAGES)
+                        prefs.remove(KEY_SELECTED_MODEL_CONTEXT)
+                        prefs.remove(KEY_SELECTED_MODEL_MAX_OUTPUT)
+                    }
+                    if (normalizedProvider == "openai-compatible") {
+                        prefs.remove(KEY_OPENAI_COMPATIBLE_MODEL_ID)
+                    }
+                }
+            }
+
+            if (selectedByProvider.isEmpty()) {
+                prefs.remove(KEY_SELECTED_MODELS_BY_PROVIDER_JSON)
+            } else {
+                prefs[KEY_SELECTED_MODELS_BY_PROVIDER_JSON] = encodeStringListMap(selectedByProvider)
+            }
+            prefs.remove(KEY_PRIMARY_MODEL_BY_PROVIDER_JSON)
+            if (metadataByProvider.isEmpty()) {
+                prefs.remove(KEY_MODEL_METADATA_BY_PROVIDER_JSON)
+            } else {
+                prefs[KEY_MODEL_METADATA_BY_PROVIDER_JSON] = encodeModelMetadataByProvider(metadataByProvider)
+            }
+        }
+    }
+
+    suspend fun clearSelectedModels(provider: String) {
+        setSelectedModelIds(provider = provider, modelIds = emptyList())
+    }
+
+    suspend fun setGlobalPrimaryModel(provider: String, modelId: String) {
+        val normalizedProvider = normalizeProvider(provider)
+        val normalizedModelId = canonicalizeModelIdForProvider(normalizedProvider, modelId)
+        if (normalizedProvider.isBlank() || normalizedModelId.isBlank()) return
+
+        context.dataStore.edit { prefs ->
+            val selectedByProvider = decodeStringListMap(prefs[KEY_SELECTED_MODELS_BY_PROVIDER_JSON])
+            val profiles = decodeOpenAiCompatibleProfiles(prefs[KEY_OPENAI_COMPATIBLE_PROFILES_JSON]).toMutableList()
+            val activeProfileId = prefs[KEY_ACTIVE_OPENAI_COMPATIBLE_PROFILE_ID].orEmpty().trim()
+            val activeProfile = profiles.firstOrNull { it.id == activeProfileId } ?: profiles.firstOrNull()
+            val selectedIds = resolveStoredSelectedIdsForProvider(
+                snapshot = prefs,
+                provider = normalizedProvider,
+                selectedByProviderInput = selectedByProvider,
+                activeProfileInput = activeProfile,
+                includeLegacyGlobalFallback = true,
+            )
+            if (!selectedIds.contains(normalizedModelId)) return@edit
+
+            val metadataByProvider = decodeModelMetadataByProvider(prefs[KEY_MODEL_METADATA_BY_PROVIDER_JSON])
+            val metadata = canonicalizeMetadataByIdForProvider(
+                normalizedProvider,
+                metadataByProvider[normalizedProvider].orEmpty(),
+            )[normalizedModelId] ?: defaultModelMetadata(normalizedModelId)
+
+            prefs[KEY_SELECTED_MODEL] = normalizedModelId
+            prefs[KEY_SELECTED_MODEL_PROVIDER] = normalizedProvider
+            prefs[KEY_SELECTED_MODEL_REASONING] = metadata.supportsReasoning
+            prefs[KEY_SELECTED_MODEL_IMAGES] = metadata.supportsImages
+            prefs[KEY_SELECTED_MODEL_CONTEXT] = metadata.contextLength.toString()
+            prefs[KEY_SELECTED_MODEL_MAX_OUTPUT] = metadata.maxOutputTokens.toString()
+
+            if (normalizedProvider == "openai-compatible") {
+                prefs[KEY_OPENAI_COMPATIBLE_MODEL_ID] = normalizedModelId
+                if (profiles.isNotEmpty()) {
+                    val targetIndex = profiles.indexOfFirst { it.id == activeProfileId }
+                        .takeIf { it >= 0 }
+                        ?: 0
+                    val targetProfile = profiles[targetIndex]
+                    val normalizedSelectedModels = targetProfile.selectedModels
+                        .map { it.trim().removePrefix("openai-compatible/") }
+                        .filter { it.isNotBlank() }
+                        .distinct()
+                    if (normalizedSelectedModels.contains(normalizedModelId)) {
+                        profiles[targetIndex] = targetProfile.copy(primaryModel = normalizedModelId)
+                        prefs[KEY_OPENAI_COMPATIBLE_PROFILES_JSON] = encodeOpenAiCompatibleProfiles(profiles)
+                    }
+                }
+            }
+        }
+    }
+
+    suspend fun backfillSelectedModelProviderIfMissing(): Boolean {
+        var changed = false
+        context.dataStore.edit { prefs ->
+            if (!prefs[KEY_SELECTED_MODEL_PROVIDER].isNullOrBlank()) {
+                return@edit
+            }
+            val stableSelectedModelProvider = resolveStableSelectedModelProviderForBackfill(snapshot = prefs)
+            if (stableSelectedModelProvider.isNotBlank()) {
+                prefs[KEY_SELECTED_MODEL_PROVIDER] = stableSelectedModelProvider
+                changed = true
+            }
+        }
+        return changed
+    }
+
+    suspend fun ensureCurrentProviderModelSelection(): Boolean {
+        var changed = false
+        context.dataStore.edit { prefs ->
+            val provider = normalizeProvider(prefs[KEY_API_PROVIDER] ?: "openrouter")
+            val originalSelectedModelProvider = normalizeProvider(prefs[KEY_SELECTED_MODEL_PROVIDER].orEmpty())
+            val selectedByProviderOriginal = decodeStringListMap(prefs[KEY_SELECTED_MODELS_BY_PROVIDER_JSON])
+            val metadataByProviderOriginal = decodeModelMetadataByProvider(prefs[KEY_MODEL_METADATA_BY_PROVIDER_JSON])
+            val activeProfile = resolveActiveOpenAiCompatibleProfile(prefs)
+
+            val selectedByProvider = selectedByProviderOriginal.toMutableMap()
+            val metadataByProvider = metadataByProviderOriginal.toMutableMap()
+            var legacyProviderBackfilled = false
+
+            if (originalSelectedModelProvider.isBlank()) {
+                val stableSelectedModelProvider = resolveStableSelectedModelProviderForBackfill(
+                    snapshot = prefs,
+                    selectedByProviderInput = selectedByProvider,
+                )
+                if (stableSelectedModelProvider.isNotBlank()) {
+                    prefs[KEY_SELECTED_MODEL_PROVIDER] = stableSelectedModelProvider
+                    legacyProviderBackfilled = true
+                }
+            }
+
+            val effectiveSelectedIds = resolveStoredSelectedIdsForProvider(
+                snapshot = prefs,
+                provider = provider,
+                selectedByProviderInput = selectedByProvider,
+                activeProfileInput = activeProfile,
+            )
+
+            if (effectiveSelectedIds.isEmpty()) {
+                selectedByProvider.remove(provider)
+                metadataByProvider.remove(provider)
+            } else {
+                selectedByProvider[provider] = effectiveSelectedIds
+
+                val sanitizedMetadata = canonicalizeMetadataByIdForProvider(
+                    provider,
+                    metadataByProvider[provider].orEmpty(),
+                ).filterKeys(effectiveSelectedIds::contains)
+                if (sanitizedMetadata.isNotEmpty()) {
+                    metadataByProvider[provider] = sanitizedMetadata
+                } else {
+                    metadataByProvider.remove(provider)
+                }
+            }
+
+            if (
+                !legacyProviderBackfilled &&
+                selectedByProvider == selectedByProviderOriginal &&
+                metadataByProvider == metadataByProviderOriginal
+            ) {
+                return@edit
+            }
+
+            if (selectedByProvider.isEmpty()) {
+                prefs.remove(KEY_SELECTED_MODELS_BY_PROVIDER_JSON)
+            } else {
+                prefs[KEY_SELECTED_MODELS_BY_PROVIDER_JSON] = encodeStringListMap(selectedByProvider)
+            }
+            prefs.remove(KEY_PRIMARY_MODEL_BY_PROVIDER_JSON)
+            if (metadataByProvider.isEmpty()) {
+                prefs.remove(KEY_MODEL_METADATA_BY_PROVIDER_JSON)
+            } else {
+                prefs[KEY_MODEL_METADATA_BY_PROVIDER_JSON] = encodeModelMetadataByProvider(metadataByProvider)
+            }
+            changed = true
+        }
+        return changed
+    }
+
+    suspend fun getGatewayLaunchConfigSnapshot(): GatewayLaunchConfigSnapshot {
+        backfillSelectedModelProviderIfMissing()
+        val snapshot = context.dataStore.data.first()
+        val configuredProvider = normalizeProvider(snapshot[KEY_API_PROVIDER] ?: "openrouter")
+
+        val profiles = decodeOpenAiCompatibleProfiles(snapshot[KEY_OPENAI_COMPATIBLE_PROFILES_JSON])
+        val activeProfileId = snapshot[KEY_ACTIVE_OPENAI_COMPATIBLE_PROFILE_ID].orEmpty().trim()
+        val activeProfile = profiles.firstOrNull { it.id == activeProfileId } ?: profiles.firstOrNull()
+
+        val selectedByProvider = decodeStringListMap(snapshot[KEY_SELECTED_MODELS_BY_PROVIDER_JSON])
+        val metadataByProvider = decodeModelMetadataByProvider(snapshot[KEY_MODEL_METADATA_BY_PROVIDER_JSON])
+        val globalPrimaryProvider = resolveSelectedModelProvider(
+            snapshot = snapshot,
+            selectedByProviderInput = selectedByProvider,
+        )
+        val legacySelectedModelRaw = snapshot[KEY_SELECTED_MODEL].orEmpty().trim()
+
+        fun resolveSelectedModelIds(targetProvider: String): List<String> {
+            return resolveStoredSelectedIdsForProvider(
+                snapshot = snapshot,
+                provider = targetProvider,
+                selectedByProviderInput = selectedByProvider,
+                activeProfileInput = activeProfile,
+                includeLegacyGlobalFallback = true,
+            )
+        }
+
+        var provider = configuredProvider
+        var selectedModelIds = resolveSelectedModelIds(provider)
+        val normalizedGlobalPrimaryProvider = normalizeProvider(globalPrimaryProvider)
+        if (normalizedGlobalPrimaryProvider.isNotBlank()) {
+            val globalSelectedModelIds = resolveSelectedModelIds(normalizedGlobalPrimaryProvider)
+            if (globalSelectedModelIds.isNotEmpty()) {
+                // 런타임 provider는 현재 설정 탭이 아니라 전역 기본 모델의 owner를 따른다.
+                // 사용자가 다른 provider 탭을 열어도 기본 모델을 바꾸기 전까지는 기존 runtime provider를 유지해야 한다.
+                provider = normalizedGlobalPrimaryProvider
+                selectedModelIds = globalSelectedModelIds
+            }
+        }
+        if (selectedModelIds.isEmpty()) {
+            val fallbackProviders = buildList {
+                val explicitSelectedModelProvider = normalizeProvider(
+                    snapshot[KEY_SELECTED_MODEL_PROVIDER].orEmpty(),
+                )
+                if (explicitSelectedModelProvider.isNotBlank()) add(explicitSelectedModelProvider)
+                selectedByProvider.keys
+                    .map(::normalizeProvider)
+                    .filter { it.isNotBlank() && it !in this }
+                    .forEach(::add)
+                if (activeProfile?.selectedModels.orEmpty().isNotEmpty() && "openai-compatible" !in this) {
+                    add("openai-compatible")
+                }
+            }
+            val fallbackProvider = fallbackProviders.firstOrNull { candidate ->
+                resolveSelectedModelIds(candidate).isNotEmpty()
+            }
+            if (fallbackProvider != null) {
+                provider = fallbackProvider
+                selectedModelIds = resolveSelectedModelIds(fallbackProvider)
+            }
+        }
+
+        val legacyApiKey = snapshot[KEY_API_KEY].orEmpty()
+        val apiKey = when (provider) {
+            "openrouter" -> snapshot[KEY_API_KEY_OPENROUTER] ?: legacyApiKey
+            "anthropic" -> snapshot[KEY_API_KEY_ANTHROPIC].orEmpty()
+            "openai", "openai-codex" -> snapshot[KEY_API_KEY_OPENAI].orEmpty()
+            "openai-compatible" -> activeProfile?.apiKey?.trim().orEmpty()
+                .ifBlank { snapshot[KEY_API_KEY_OPENAI_COMPATIBLE].orEmpty() }
+            "google" -> snapshot[KEY_API_KEY_GOOGLE].orEmpty()
+            else -> legacyApiKey
+        }
+
+        val openAiCompatibleBaseUrl = activeProfile?.baseUrl
+            ?: (snapshot[KEY_OPENAI_COMPATIBLE_BASE_URL] ?: "https://api.openai.com/v1")
+
+        val legacySelectedModel = canonicalizeModelIdForProvider(
+            provider,
+            legacySelectedModelRaw,
+        )
+
+        val globalPrimary = legacySelectedModel
+            .takeIf {
+                it.isNotBlank() &&
+                    globalPrimaryProvider == provider &&
+                    selectedModelIds.contains(it) &&
+                    isLegacyModelCompatibleWithProvider(provider, it)
+            }
+            .orEmpty()
+        val profilePrimary = if (provider == "openai-compatible") {
+            activeProfile?.primaryModel
+                .orEmpty()
+                .trim()
+                .removePrefix("openai-compatible/")
+                .ifBlank {
+                    snapshot[KEY_OPENAI_COMPATIBLE_MODEL_ID]
+                        .orEmpty()
+                        .trim()
+                        .removePrefix("openai-compatible/")
+                }
+                .takeIf { it.isNotBlank() && selectedModelIds.contains(it) }
+                .orEmpty()
+        } else {
+            ""
+        }
+        val effectivePrimary = globalPrimary.ifBlank { profilePrimary }
+
+        val legacyEntry = legacySelectedModel
+            .takeIf { it.isNotBlank() }
+            ?.let { modelId ->
+                SelectedModelConfigEntry(
+                    id = modelId,
+                    supportsReasoning = snapshot[KEY_SELECTED_MODEL_REASONING] ?: false,
+                    supportsImages = snapshot[KEY_SELECTED_MODEL_IMAGES] ?: false,
+                    contextLength = snapshot[KEY_SELECTED_MODEL_CONTEXT]?.toIntOrNull()?.coerceAtLeast(1) ?: 200000,
+                    maxOutputTokens = snapshot[KEY_SELECTED_MODEL_MAX_OUTPUT]?.toIntOrNull()?.coerceAtLeast(1) ?: 4096,
+                )
+            }
+
+        val providerMetadataById = canonicalizeMetadataByIdForProvider(
+            provider,
+            metadataByProvider[provider].orEmpty(),
+        )
+        val selectedEntries = selectedModelIds.map { modelId ->
+            providerMetadataById[modelId]
+                ?: legacyEntry?.takeIf { it.id == modelId }
+                ?: defaultModelMetadata(modelId)
+        }
+
+        val selectedModelForRuntime = when {
+            effectivePrimary.isNotBlank() -> effectivePrimary
+            selectedModelIds.isNotEmpty() -> selectedModelIds.first()
+            else -> ""
+        }
+        val selectedModelEntryForRuntime = selectedEntries.firstOrNull { it.id == selectedModelForRuntime }
+
+        val memorySearchProvider = snapshot[KEY_MEMORY_SEARCH_PROVIDER].orEmpty().trim().lowercase().let { raw ->
+            when (raw) {
+                "", "auto", "openai", "gemini", "voyage", "mistral", "local" ->
+                    if (raw.isBlank()) "auto" else raw
+                else -> "auto"
+            }
+        }
+
+        return GatewayLaunchConfigSnapshot(
+            apiProvider = provider,
+            apiKey = apiKey,
+            selectedModel = selectedModelForRuntime,
+            selectedModelEntries = selectedEntries,
+            primaryModelId = effectivePrimary,
+            openAiCompatibleBaseUrl = openAiCompatibleBaseUrl,
+            modelReasoning = selectedModelEntryForRuntime?.supportsReasoning
+                ?: (snapshot[KEY_SELECTED_MODEL_REASONING] ?: false),
+            modelImages = selectedModelEntryForRuntime?.supportsImages
+                ?: (snapshot[KEY_SELECTED_MODEL_IMAGES] ?: false),
+            modelContext = selectedModelEntryForRuntime?.contextLength
+                ?: (snapshot[KEY_SELECTED_MODEL_CONTEXT]?.toIntOrNull() ?: 200000),
+            modelMaxOutput = selectedModelEntryForRuntime?.maxOutputTokens
+                ?: (snapshot[KEY_SELECTED_MODEL_MAX_OUTPUT]?.toIntOrNull() ?: 4096),
+            channelConfig = ChannelConfig(
+                whatsappEnabled = true,
+                telegramEnabled = snapshot[KEY_TELEGRAM_ENABLED] ?: false,
+                telegramBotToken = snapshot[KEY_TELEGRAM_BOT_TOKEN] ?: "",
+                discordEnabled = snapshot[KEY_DISCORD_ENABLED] ?: false,
+                discordBotToken = snapshot[KEY_DISCORD_BOT_TOKEN] ?: "",
+                discordGuildAllowlist = snapshot[KEY_DISCORD_GUILD_ALLOWLIST] ?: "",
+                discordRequireMention = snapshot[KEY_DISCORD_REQUIRE_MENTION] ?: true,
+            ),
+            braveSearchApiKey = snapshot[KEY_BRAVE_SEARCH_API_KEY] ?: "",
+            hasExplicitMemorySearchPrefs =
+                snapshot.contains(KEY_MEMORY_SEARCH_ENABLED) ||
+                    snapshot.contains(KEY_MEMORY_SEARCH_PROVIDER) ||
+                    snapshot.contains(KEY_MEMORY_SEARCH_API_KEY),
+            memorySearchEnabled = snapshot[KEY_MEMORY_SEARCH_ENABLED] ?: true,
+            memorySearchProvider = memorySearchProvider,
+            memorySearchApiKey = snapshot[KEY_MEMORY_SEARCH_API_KEY] ?: "",
+        )
+    }
+
+    suspend fun getEffectivePrimary(provider: String): String? {
+        val normalizedProvider = normalizeProvider(provider)
+        val snapshot = context.dataStore.data.first()
+        val selectedByProvider = decodeStringListMap(snapshot[KEY_SELECTED_MODELS_BY_PROVIDER_JSON])
+        val selectedIds = selectedByProvider[normalizedProvider]
+            .orEmpty()
+            .map { canonicalizeModelIdForProvider(normalizedProvider, it) }
+            .filter { it.isNotBlank() }
+            .distinct()
+        if (selectedIds.isEmpty()) {
+            if (normalizedProvider == "openai-compatible") {
+                val profiles = decodeOpenAiCompatibleProfiles(snapshot[KEY_OPENAI_COMPATIBLE_PROFILES_JSON])
+                val activeProfileId = snapshot[KEY_ACTIVE_OPENAI_COMPATIBLE_PROFILE_ID].orEmpty().trim()
+                val activeProfile = profiles.firstOrNull { it.id == activeProfileId } ?: profiles.firstOrNull()
+                val profileSelectedIds = activeProfile?.selectedModels
+                    .orEmpty()
+                    .map { it.trim().removePrefix("openai-compatible/") }
+                    .filter { it.isNotBlank() }
+                    .distinct()
+                val profilePrimary = activeProfile?.primaryModel
+                    .orEmpty()
+                    .trim()
+                    .removePrefix("openai-compatible/")
+                if (profilePrimary.isNotBlank() && profileSelectedIds.contains(profilePrimary)) {
+                    return profilePrimary
+                }
+                if (profileSelectedIds.isNotEmpty()) {
+                    return profileSelectedIds.first()
+                }
+            }
+            val globalPrimaryProvider = resolveSelectedModelProvider(
+                snapshot = snapshot,
+                selectedByProviderInput = selectedByProvider,
+            )
+            return if (
+                normalizeProvider(snapshot[KEY_API_PROVIDER] ?: "openrouter") == normalizedProvider &&
+                globalPrimaryProvider == normalizedProvider
+            ) {
+                snapshot[KEY_SELECTED_MODEL]
+                    ?.let { canonicalizeModelIdForProvider(normalizedProvider, it) }
+                    ?.takeIf { it.isNotBlank() }
+            } else {
+                null
+            }
+        }
+        val globalPrimaryProvider = resolveSelectedModelProvider(
+            snapshot = snapshot,
+            selectedByProviderInput = selectedByProvider,
+        )
+        val requestedPrimary = if (
+            globalPrimaryProvider == normalizedProvider &&
+            normalizeProvider(snapshot[KEY_SELECTED_MODEL_PROVIDER].orEmpty()) == normalizedProvider
+        ) {
+            snapshot[KEY_SELECTED_MODEL]
+                ?.let { canonicalizeModelIdForProvider(normalizedProvider, it) }
+                .orEmpty()
+        } else if (normalizedProvider == "openai-compatible") {
+            val profiles = decodeOpenAiCompatibleProfiles(snapshot[KEY_OPENAI_COMPATIBLE_PROFILES_JSON])
+            val activeProfileId = snapshot[KEY_ACTIVE_OPENAI_COMPATIBLE_PROFILE_ID].orEmpty().trim()
+            val activeProfile = profiles.firstOrNull { it.id == activeProfileId } ?: profiles.firstOrNull()
+            activeProfile?.primaryModel
+                .orEmpty()
+                .trim()
+                .removePrefix("openai-compatible/")
+                .ifBlank {
+                    snapshot[KEY_OPENAI_COMPATIBLE_MODEL_ID]
+                        .orEmpty()
+                        .trim()
+                        .removePrefix("openai-compatible/")
+                }
+        } else {
+            ""
+        }
+        return when {
+            requestedPrimary.isNotBlank() && selectedIds.contains(requestedPrimary) -> requestedPrimary
+            else -> selectedIds.firstOrNull()
+        }
+    }
+
+    suspend fun upsertOpenAiCompatibleProfile(profile: OpenAiCompatibleProfile, activate: Boolean = false) {
+        val normalizedId = profile.id.trim()
+        if (normalizedId.isBlank()) return
+        context.dataStore.edit { prefs ->
+            val currentProfiles = decodeOpenAiCompatibleProfiles(prefs[KEY_OPENAI_COMPATIBLE_PROFILES_JSON]).toMutableList()
+            val normalizedSelectedModels = profile.selectedModels
+                .map { it.trim().removePrefix("openai-compatible/") }
+                .filter { it.isNotBlank() }
+                .distinct()
+            val normalizedPrimaryModel = profile.primaryModel
+                ?.trim()
+                ?.removePrefix("openai-compatible/")
+                ?.ifBlank { null }
+            val normalizedProfile = profile.copy(
+                id = normalizedId,
+                name = profile.name.trim().ifBlank { normalizedId },
+                baseUrl = profile.baseUrl.trim().ifBlank { "https://api.openai.com/v1" },
+                selectedModels = normalizedSelectedModels,
+                primaryModel = normalizedPrimaryModel,
+            )
+            val existingIndex = currentProfiles.indexOfFirst { it.id == normalizedId }
+            if (existingIndex >= 0) {
+                currentProfiles[existingIndex] = normalizedProfile
+            } else {
+                currentProfiles += normalizedProfile
+            }
+            prefs[KEY_OPENAI_COMPATIBLE_PROFILES_JSON] = encodeOpenAiCompatibleProfiles(currentProfiles)
+            if (activate || prefs[KEY_ACTIVE_OPENAI_COMPATIBLE_PROFILE_ID].isNullOrBlank()) {
+                prefs[KEY_ACTIVE_OPENAI_COMPATIBLE_PROFILE_ID] = normalizedId
+            }
+        }
+    }
+
+    suspend fun removeOpenAiCompatibleProfile(profileId: String) {
+        val normalizedId = profileId.trim()
+        if (normalizedId.isBlank()) return
+        context.dataStore.edit { prefs ->
+            val updatedProfiles = decodeOpenAiCompatibleProfiles(prefs[KEY_OPENAI_COMPATIBLE_PROFILES_JSON])
+                .filterNot { it.id == normalizedId }
+            if (updatedProfiles.isEmpty()) {
+                prefs.remove(KEY_OPENAI_COMPATIBLE_PROFILES_JSON)
+                prefs.remove(KEY_ACTIVE_OPENAI_COMPATIBLE_PROFILE_ID)
+            } else {
+                prefs[KEY_OPENAI_COMPATIBLE_PROFILES_JSON] = encodeOpenAiCompatibleProfiles(updatedProfiles)
+                if (prefs[KEY_ACTIVE_OPENAI_COMPATIBLE_PROFILE_ID] == normalizedId) {
+                    prefs[KEY_ACTIVE_OPENAI_COMPATIBLE_PROFILE_ID] = updatedProfiles.first().id
+                }
+            }
+        }
+    }
+
+    suspend fun setActiveOpenAiCompatibleProfile(profileId: String) {
+        val normalizedId = profileId.trim()
+        if (normalizedId.isBlank()) return
+        context.dataStore.edit { prefs ->
+            val profiles = decodeOpenAiCompatibleProfiles(prefs[KEY_OPENAI_COMPATIBLE_PROFILES_JSON])
+            val targetProfile = profiles.firstOrNull { it.id == normalizedId } ?: return@edit
+
+            prefs[KEY_ACTIVE_OPENAI_COMPATIBLE_PROFILE_ID] = normalizedId
+
+            val normalizedSelectedIds = targetProfile.selectedModels
+                .map { it.trim().removePrefix("openai-compatible/") }
+                .filter { it.isNotBlank() }
+                .distinct()
+                .toMutableList()
+
+            val normalizedPrimaryFromProfile = targetProfile.primaryModel
+                .orEmpty()
+                .trim()
+                .removePrefix("openai-compatible/")
+
+            if (normalizedPrimaryFromProfile.isNotBlank() && !normalizedSelectedIds.contains(normalizedPrimaryFromProfile)) {
+                normalizedSelectedIds.add(0, normalizedPrimaryFromProfile)
+            }
+
+            val effectivePrimary = when {
+                normalizedPrimaryFromProfile.isNotBlank() && normalizedSelectedIds.contains(normalizedPrimaryFromProfile) ->
+                    normalizedPrimaryFromProfile
+
+                else -> ""
+            }
+
+            val selectedByProvider = decodeStringListMap(prefs[KEY_SELECTED_MODELS_BY_PROVIDER_JSON]).toMutableMap()
+            if (normalizedSelectedIds.isEmpty()) {
+                selectedByProvider.remove("openai-compatible")
+            } else {
+                selectedByProvider["openai-compatible"] = normalizedSelectedIds
+            }
+            if (selectedByProvider.isEmpty()) {
+                prefs.remove(KEY_SELECTED_MODELS_BY_PROVIDER_JSON)
+            } else {
+                prefs[KEY_SELECTED_MODELS_BY_PROVIDER_JSON] = encodeStringListMap(selectedByProvider)
+            }
+            prefs.remove(KEY_PRIMARY_MODEL_BY_PROVIDER_JSON)
+
+            val metadataByProvider =
+                decodeModelMetadataByProvider(prefs[KEY_MODEL_METADATA_BY_PROVIDER_JSON]).toMutableMap()
+            val providerMetadata = canonicalizeMetadataByIdForProvider(
+                "openai-compatible",
+                metadataByProvider["openai-compatible"].orEmpty(),
+            ).toMutableMap()
+            normalizedSelectedIds.forEach { modelId ->
+                if (!providerMetadata.containsKey(modelId)) {
+                    providerMetadata[modelId] = defaultModelMetadata(modelId)
+                }
+            }
+            providerMetadata.keys
+                .filterNot { normalizedSelectedIds.contains(it) }
+                .forEach(providerMetadata::remove)
+            if (providerMetadata.isEmpty()) {
+                metadataByProvider.remove("openai-compatible")
+            } else {
+                metadataByProvider["openai-compatible"] = providerMetadata
+            }
+            if (metadataByProvider.isEmpty()) {
+                prefs.remove(KEY_MODEL_METADATA_BY_PROVIDER_JSON)
+            } else {
+                prefs[KEY_MODEL_METADATA_BY_PROVIDER_JSON] = encodeModelMetadataByProvider(metadataByProvider)
+            }
+
+            if (effectivePrimary.isNotBlank()) {
+                prefs[KEY_OPENAI_COMPATIBLE_MODEL_ID] = effectivePrimary
+            } else {
+                prefs.remove(KEY_OPENAI_COMPATIBLE_MODEL_ID)
+            }
+
+            val currentProvider = normalizeProvider(prefs[KEY_API_PROVIDER] ?: "openrouter")
+            if (currentProvider == "openai-compatible") {
+                if (effectivePrimary.isNotBlank()) {
+                    prefs[KEY_SELECTED_MODEL] = effectivePrimary
+                    prefs[KEY_SELECTED_MODEL_PROVIDER] = "openai-compatible"
+                    val primaryMetadata = providerMetadata[effectivePrimary] ?: defaultModelMetadata(effectivePrimary)
+                    prefs[KEY_SELECTED_MODEL_REASONING] = primaryMetadata.supportsReasoning
+                    prefs[KEY_SELECTED_MODEL_IMAGES] = primaryMetadata.supportsImages
+                    prefs[KEY_SELECTED_MODEL_CONTEXT] = primaryMetadata.contextLength.toString()
+                    prefs[KEY_SELECTED_MODEL_MAX_OUTPUT] = primaryMetadata.maxOutputTokens.toString()
+                } else {
+                    prefs[KEY_SELECTED_MODEL] = ""
+                    prefs.remove(KEY_SELECTED_MODEL_PROVIDER)
+                    prefs.remove(KEY_SELECTED_MODEL_REASONING)
+                    prefs.remove(KEY_SELECTED_MODEL_IMAGES)
+                    prefs.remove(KEY_SELECTED_MODEL_CONTEXT)
+                    prefs.remove(KEY_SELECTED_MODEL_MAX_OUTPUT)
+                }
+            }
+        }
     }
 
     // ── Brave Search ──
@@ -645,6 +2353,53 @@ class PreferencesManager(private val context: Context) {
         return out.toString()
     }
 }
+
+data class SelectedModelConfigEntry(
+    val id: String,
+    val supportsReasoning: Boolean,
+    val supportsImages: Boolean,
+    val contextLength: Int,
+    val maxOutputTokens: Int,
+)
+
+data class OpenAiCompatibleProfile(
+    val id: String,
+    val name: String,
+    val baseUrl: String,
+    val apiKey: String,
+    val selectedModels: List<String>,
+    val primaryModel: String?,
+)
+
+data class LaunchApiKeyWarning(
+    val shouldWarn: Boolean,
+    val provider: String,
+    val hasSelectedModels: Boolean = true,
+)
+
+data class GlobalDefaultModelOption(
+    val provider: String,
+    val modelId: String,
+)
+
+data class GatewayLaunchConfigSnapshot(
+    val apiProvider: String,
+    val apiKey: String,
+    val selectedModel: String,
+    val selectedModelEntries: List<SelectedModelConfigEntry>,
+    val primaryModelId: String,
+    val openAiCompatibleBaseUrl: String,
+    val modelReasoning: Boolean,
+    val modelImages: Boolean,
+    val modelContext: Int,
+    val modelMaxOutput: Int,
+    val channelConfig: ChannelConfig,
+    val braveSearchApiKey: String,
+    val hasExplicitMemorySearchPrefs: Boolean,
+    val memorySearchEnabled: Boolean,
+    val memorySearchProvider: String,
+    val memorySearchApiKey: String,
+)
 
 data class BundleUpdateFailureRecord(
     val failCountForCurrentVersion: Int,

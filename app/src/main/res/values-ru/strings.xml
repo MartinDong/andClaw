@@ -105,6 +105,7 @@
     <string name="settings_api_key">API ключ</string>
     <string name="settings_api_key_configured">Настроен</string>
     <string name="settings_api_key_not_configured">Не настроен</string>
+    <string name="settings_api_key_not_required">Не требуется</string>
     <string name="settings_api_key_hint">Введите ваш API ключ</string>
     <string name="settings_api_key_save">Сохранить</string>
     <string name="settings_api_key_cancel">Отмена</string>
@@ -112,7 +113,12 @@
     <string name="settings_restart_confirm_message">Перезапустить шлюз сейчас?</string>
     <string name="settings_restart_confirm_yes">Да</string>
     <string name="settings_restart_confirm_no">Нет</string>
-<string name="settings_select_model">Выберите модель</string>
+    <string name="settings_select_model">Выберите модель</string>
+
+    <string name="settings_default_model_label">Модель по умолчанию</string>
+    <string name="settings_default_model_none">Модель по умолчанию не выбрана</string>
+    <string name="settings_tab_model">Модель</string>
+
     <string name="settings_model_default">По умолчанию (Auto Select Free)</string>
     <string name="settings_model_restart_hint">Перезагрузите шлюз для применения новой модели</string>
     <string name="settings_model_loading">Загрузка моделей…</string>
@@ -122,6 +128,7 @@
     <string name="settings_model_close">Закрыть</string>
     <string name="settings_model_section_free">Бесплатные</string>
     <string name="settings_model_free_warning">Бесплатные модели могут работать медленно или не отвечать при высокой нагрузке</string>
+    <string name="settings_model_selection_guide">Вы можете выбрать модели для использования или оставить список пустым. Также можно назначить одну из выбранных моделей моделью по умолчанию.</string>
     <string name="settings_model_section_paid">Платные</string>
     <string name="settings_section_about">О приложении</string>
     <string name="settings_disclaimer">Это приложение не является официальным приложением OpenClaw</string>

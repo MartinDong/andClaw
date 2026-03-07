@@ -60,6 +60,7 @@ class GatewayService : Service() {
         private const val WHATSAPP_LOGIN_WAKE_LOCK_TIMEOUT_MS = 4L * 60L * 1000L
         const val ACTION_START = "com.coderred.andclaw.action.START"
         const val ACTION_STOP = "com.coderred.andclaw.action.STOP"
+        const val ACTION_STOP_FOR_MISSING_MODEL = "com.coderred.andclaw.action.STOP_FOR_MISSING_MODEL"
         const val ACTION_RESTART = "com.coderred.andclaw.action.RESTART"
         const val ACTION_WHATSAPP_LOGIN_GUARD_START = "com.coderred.andclaw.action.WHATSAPP_LOGIN_GUARD_START"
         const val ACTION_WHATSAPP_LOGIN_GUARD_STOP = "com.coderred.andclaw.action.WHATSAPP_LOGIN_GUARD_STOP"
@@ -156,6 +157,13 @@ class GatewayService : Service() {
         fun stop(context: Context) {
             val intent = Intent(context, GatewayService::class.java).apply {
                 action = ACTION_STOP
+            }
+            context.startService(intent)
+        }
+
+        fun stopForMissingModelSelection(context: Context) {
+            val intent = Intent(context, GatewayService::class.java).apply {
+                action = ACTION_STOP_FOR_MISSING_MODEL
             }
             context.startService(intent)
         }
@@ -338,6 +346,11 @@ class GatewayService : Service() {
             ACTION_STOP -> {
                 runAction(GatewayActionType.STOP, startId) { actionToken, actionStartId ->
                     handleStop(actionToken = actionToken, startId = actionStartId)
+                }
+            }
+            ACTION_STOP_FOR_MISSING_MODEL -> {
+                runAction(GatewayActionType.STOP, startId) { _, actionStartId ->
+                    stopForMissingModelSelection(actionStartId)
                 }
             }
         }
@@ -548,41 +561,44 @@ class GatewayService : Service() {
 
             if (!isActionCurrent(actionToken)) return@withTimedWakeLock
 
-            val apiProvider = prefs.apiProvider.first()
-            val apiKey = prefs.apiKey.first()
-            val selectedModel = prefs.selectedModel.first()
-            val channelConfig = prefs.channelConfig.first()
-            val modelReasoning = prefs.selectedModelReasoning.first()
-            val modelImages = prefs.selectedModelImages.first()
-            val modelContext = prefs.selectedModelContext.first()
-            val modelMaxOutput = prefs.selectedModelMaxOutput.first()
-            val openAiCompatibleBaseUrl = prefs.openAiCompatibleBaseUrl.first()
-            val braveSearchApiKey = prefs.braveSearchApiKey.first()
-            val hasExplicitMemorySearchPrefs = prefs.hasExplicitMemorySearchPrefs.first()
-            val memorySearchEnabled = prefs.memorySearchEnabled.first()
-            val memorySearchProvider = prefs.memorySearchProvider.first()
-            val memorySearchApiKey = prefs.memorySearchApiKey.first()
+            prefs.ensureCurrentProviderModelSelection()
+            val launchConfig = prefs.getGatewayLaunchConfigSnapshot()
 
             if (!setDesiredRunningAndWatchdog(shouldRun = true, actionToken = actionToken)) {
                 return@withTimedWakeLock
             }
 
+            if (launchConfig.selectedModelEntries.isEmpty()) {
+                stopForMissingModelSelection(startId)
+                return@withTimedWakeLock
+            }
+
             if (!isActionCurrent(actionToken)) return@withTimedWakeLock
             pm.start(
-                apiProvider,
-                apiKey,
-                selectedModel,
-                openAiCompatibleBaseUrl,
-                channelConfig,
-                modelReasoning,
-                modelImages,
-                modelContext,
-                modelMaxOutput,
-                braveSearchApiKey,
-                hasExplicitMemorySearchPrefs,
-                memorySearchEnabled,
-                memorySearchProvider,
-                memorySearchApiKey,
+                launchConfig.apiProvider,
+                launchConfig.apiKey,
+                launchConfig.selectedModel,
+                launchConfig.selectedModelEntries.map { entry ->
+                    ProcessManager.ModelSelectionEntry(
+                        id = entry.id,
+                        supportsReasoning = entry.supportsReasoning,
+                        supportsImages = entry.supportsImages,
+                        contextLength = entry.contextLength,
+                        maxOutputTokens = entry.maxOutputTokens,
+                    )
+                },
+                launchConfig.primaryModelId,
+                launchConfig.openAiCompatibleBaseUrl,
+                launchConfig.channelConfig,
+                launchConfig.modelReasoning,
+                launchConfig.modelImages,
+                launchConfig.modelContext,
+                launchConfig.modelMaxOutput,
+                launchConfig.braveSearchApiKey,
+                launchConfig.hasExplicitMemorySearchPrefs,
+                launchConfig.memorySearchEnabled,
+                launchConfig.memorySearchProvider,
+                launchConfig.memorySearchApiKey,
             )
 
             val finalStatus = awaitGatewayStartupTerminalState(START_TERMINAL_WAIT_TIMEOUT_MS)
@@ -622,37 +638,39 @@ class GatewayService : Service() {
         withTimedWakeLock(RESTART_WAKE_LOCK_TIMEOUT_MS) {
             if (!isActionCurrent(actionToken)) return@withTimedWakeLock
 
-            val apiProvider = prefs.apiProvider.first()
-            val apiKey = prefs.apiKey.first()
-            val selectedModel = prefs.selectedModel.first()
-            val channelConfig = prefs.channelConfig.first()
-            val modelReasoning = prefs.selectedModelReasoning.first()
-            val modelImages = prefs.selectedModelImages.first()
-            val modelContext = prefs.selectedModelContext.first()
-            val modelMaxOutput = prefs.selectedModelMaxOutput.first()
-            val openAiCompatibleBaseUrl = prefs.openAiCompatibleBaseUrl.first()
-            val braveSearchApiKey = prefs.braveSearchApiKey.first()
-            val hasExplicitMemorySearchPrefs = prefs.hasExplicitMemorySearchPrefs.first()
-            val memorySearchEnabled = prefs.memorySearchEnabled.first()
-            val memorySearchProvider = prefs.memorySearchProvider.first()
-            val memorySearchApiKey = prefs.memorySearchApiKey.first()
+            prefs.ensureCurrentProviderModelSelection()
+            val launchConfig = prefs.getGatewayLaunchConfigSnapshot()
 
             if (!isActionCurrent(actionToken)) return@withTimedWakeLock
+            if (launchConfig.selectedModelEntries.isEmpty()) {
+                stopForMissingModelSelection(startId)
+                return@withTimedWakeLock
+            }
             pm.restart(
-                apiProvider,
-                apiKey,
-                selectedModel,
-                openAiCompatibleBaseUrl,
-                channelConfig,
-                modelReasoning,
-                modelImages,
-                modelContext,
-                modelMaxOutput,
-                braveSearchApiKey,
-                hasExplicitMemorySearchPrefs,
-                memorySearchEnabled,
-                memorySearchProvider,
-                memorySearchApiKey,
+                launchConfig.apiProvider,
+                launchConfig.apiKey,
+                launchConfig.selectedModel,
+                launchConfig.selectedModelEntries.map { entry ->
+                    ProcessManager.ModelSelectionEntry(
+                        id = entry.id,
+                        supportsReasoning = entry.supportsReasoning,
+                        supportsImages = entry.supportsImages,
+                        contextLength = entry.contextLength,
+                        maxOutputTokens = entry.maxOutputTokens,
+                    )
+                },
+                launchConfig.primaryModelId,
+                launchConfig.openAiCompatibleBaseUrl,
+                launchConfig.channelConfig,
+                launchConfig.modelReasoning,
+                launchConfig.modelImages,
+                launchConfig.modelContext,
+                launchConfig.modelMaxOutput,
+                launchConfig.braveSearchApiKey,
+                launchConfig.hasExplicitMemorySearchPrefs,
+                launchConfig.memorySearchEnabled,
+                launchConfig.memorySearchProvider,
+                launchConfig.memorySearchApiKey,
             )
             val finalStatus = awaitGatewayStartupTerminalState(RESTART_WAKE_LOCK_TIMEOUT_MS)
             if (!isActionCurrent(actionToken)) return@withTimedWakeLock
@@ -667,6 +685,14 @@ class GatewayService : Service() {
         // STOP 요청은 최신 토큰 여부와 무관하게 항상 desired-running=false를 강제 반영한다.
         forceDesiredStopped()
         pm.stop()
+        stopServiceForeground(startId)
+    }
+
+    private suspend fun stopForMissingModelSelection(startId: Int) {
+        releaseActiveWakeLock()
+        pm.stop()
+        pm.setStoppedNotice(getString(R.string.settings_model_none_found))
+        forceDesiredStopped()
         stopServiceForeground(startId)
     }
 

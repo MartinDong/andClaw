@@ -117,6 +117,7 @@
     <string name="settings_api_key">Clave de API</string>
     <string name="settings_api_key_configured">Configurada</string>
     <string name="settings_api_key_not_configured">No configurada</string>
+    <string name="settings_api_key_not_required">No es obligatorio</string>
     <string name="settings_api_key_hint">Ingresa tu clave de API</string>
     <string name="settings_api_key_save">Guardar</string>
     <string name="settings_api_key_cancel">Cancelar</string>
@@ -124,7 +125,12 @@
     <string name="settings_restart_confirm_message">¿Reiniciar la puerta de enlace ahora?</string>
     <string name="settings_restart_confirm_yes">Sí</string>
     <string name="settings_restart_confirm_no">No</string>
-<string name="settings_select_model">Seleccionar modelo</string>
+    <string name="settings_select_model">Seleccionar modelo</string>
+
+    <string name="settings_default_model_label">Modelo predeterminado</string>
+    <string name="settings_default_model_none">No se ha seleccionado ningún modelo predeterminado</string>
+    <string name="settings_tab_model">Modelo</string>
+
     <string name="settings_model_default">Predeterminado (Auto Select Free)</string>
     <string name="settings_model_restart_hint">Reinicia el gateway para aplicar el nuevo modelo</string>
     <string name="settings_model_loading">Cargando modelos…</string>
@@ -134,6 +140,7 @@
     <string name="settings_model_close">Cerrar</string>
     <string name="settings_model_section_free">Gratuitos</string>
     <string name="settings_model_free_warning">Los modelos gratuitos pueden ser lentos o no responder durante alta demanda</string>
+    <string name="settings_model_selection_guide">Puedes seleccionar modelos para usar o dejar la lista vacía. También puedes establecer uno de los modelos seleccionados como modelo predeterminado.</string>
     <string name="settings_model_section_paid">De pago</string>
     <string name="settings_section_about">Acerca de</string>
     <string name="settings_disclaimer">Esta aplicación no es una aplicación oficial de OpenClaw</string>

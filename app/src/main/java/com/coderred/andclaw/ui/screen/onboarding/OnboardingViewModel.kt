@@ -58,6 +58,7 @@ class OnboardingViewModel(application: Application) : AndroidViewModel(applicati
                     getApplication<Application>(),
                 )
                 prefs.setApiProvider("openrouter")
+                prefs.setSelectedModelId("openrouter/free")
                 prefs.setApiKey(apiKey)
                 prefs.setOnboardingComplete(true)
                 _state.value = _state.value.copy(isConnecting = false, isSuccess = true)
@@ -73,6 +74,7 @@ class OnboardingViewModel(application: Application) : AndroidViewModel(applicati
     fun saveManualApiKey(apiKey: String) {
         viewModelScope.launch {
             prefs.setApiProvider("openrouter")
+            prefs.setSelectedModelId("openrouter/free")
             prefs.setApiKey(apiKey)
             prefs.setOnboardingComplete(true)
             _state.value = _state.value.copy(isSuccess = true)

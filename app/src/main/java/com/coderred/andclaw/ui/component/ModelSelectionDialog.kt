@@ -11,22 +11,26 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
@@ -39,13 +43,21 @@ import com.coderred.andclaw.data.OpenRouterModel
 @Composable
 fun ModelSelectionDialog(
     models: List<OpenRouterModel>,
-    selectedModelId: String,
+    selectedModelIds: Set<String>,
     isLoading: Boolean,
     errorMessage: String?,
-    onSelectModel: (OpenRouterModel) -> Unit,
+    onApplySelection: (List<OpenRouterModel>) -> Unit,
     onDismiss: () -> Unit,
     onRetry: () -> Unit,
 ) {
+    var localSelectedIds by remember(models, selectedModelIds) {
+        mutableStateOf(selectedModelIds.toMutableSet())
+    }
+    val canApplySelection =
+        !isLoading &&
+            errorMessage == null &&
+            models.isNotEmpty()
+
     AlertDialog(
         onDismissRequest = onDismiss,
         shape = RoundedCornerShape(24.dp),
@@ -94,6 +106,7 @@ fun ModelSelectionDialog(
                         }
                     }
                 }
+
                 errorMessage != null -> {
                     Column(
                         modifier = Modifier.fillMaxWidth(),
@@ -116,17 +129,19 @@ fun ModelSelectionDialog(
                         }
                     }
                 }
+
                 models.isEmpty() -> {
                     Text(
                         text = stringResource(R.string.settings_model_none_found),
                         style = MaterialTheme.typography.bodyMedium,
                     )
                 }
+
                 else -> {
                     val freeModels = models.filter { it.isFree }
                     val paidModels = models.filter { !it.isFree }
 
-                    LazyColumn(modifier = Modifier.height(400.dp)) {
+                    LazyColumn(modifier = Modifier.height(420.dp)) {
                         if (freeModels.isNotEmpty()) {
                             item {
                                 SectionLabel(stringResource(R.string.settings_model_section_free))
@@ -138,10 +153,17 @@ fun ModelSelectionDialog(
                                 )
                             }
                             items(freeModels) { model ->
+                                val checked = localSelectedIds.contains(model.id)
                                 ModelItem(
                                     model = model,
-                                    isSelected = model.id == selectedModelId,
-                                    onClick = { onSelectModel(model) },
+                                    checked = checked,
+                                    onToggleChecked = {
+                                        if (checked) {
+                                            localSelectedIds = localSelectedIds.toMutableSet().apply { remove(model.id) }
+                                        } else {
+                                            localSelectedIds = localSelectedIds.toMutableSet().apply { add(model.id) }
+                                        }
+                                    },
                                 )
                             }
                         }
@@ -151,10 +173,17 @@ fun ModelSelectionDialog(
                                 SectionLabel(stringResource(R.string.settings_model_section_paid))
                             }
                             items(paidModels) { model ->
+                                val checked = localSelectedIds.contains(model.id)
                                 ModelItem(
                                     model = model,
-                                    isSelected = model.id == selectedModelId,
-                                    onClick = { onSelectModel(model) },
+                                    checked = checked,
+                                    onToggleChecked = {
+                                        if (checked) {
+                                            localSelectedIds = localSelectedIds.toMutableSet().apply { remove(model.id) }
+                                        } else {
+                                            localSelectedIds = localSelectedIds.toMutableSet().apply { add(model.id) }
+                                        }
+                                    },
                                 )
                             }
                         }
@@ -163,6 +192,17 @@ fun ModelSelectionDialog(
             }
         },
         confirmButton = {
+            TextButton(
+                onClick = {
+                    val selected = models.filter { localSelectedIds.contains(it.id) }
+                    onApplySelection(selected)
+                },
+                enabled = canApplySelection,
+            ) {
+                Text(stringResource(R.string.settings_api_key_save))
+            }
+        },
+        dismissButton = {
             TextButton(onClick = onDismiss) {
                 Text(stringResource(R.string.settings_model_close))
             }
@@ -184,13 +224,13 @@ private fun SectionLabel(text: String) {
 @Composable
 private fun ModelItem(
     model: OpenRouterModel,
-    isSelected: Boolean,
-    onClick: () -> Unit,
+    checked: Boolean,
+    onToggleChecked: () -> Unit,
 ) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(12.dp),
-        color = if (isSelected) {
+        color = if (checked) {
             MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f)
         } else {
             MaterialTheme.colorScheme.surface
@@ -199,21 +239,27 @@ private fun ModelItem(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .clickable(onClick = onClick)
+                .clickable(onClick = onToggleChecked)
                 .heightIn(min = 56.dp)
                 .padding(horizontal = 12.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Column(modifier = Modifier.weight(1f)) {
+            Checkbox(
+                checked = checked,
+                onCheckedChange = { onToggleChecked() },
+            )
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(start = 8.dp),
+            ) {
                 Text(
                     text = model.name,
                     style = MaterialTheme.typography.bodyMedium,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     formatContextLength(model.contextLength)?.let { contextLabel ->
                         Text(
                             text = contextLabel,
@@ -235,17 +281,96 @@ private fun ModelItem(
                     }
                 }
             }
-            if (isSelected) {
-                Spacer(modifier = Modifier.width(8.dp))
-                Icon(
-                    Icons.Default.Check,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(20.dp),
-                )
-            }
         }
     }
+}
+
+data class DefaultModelDialogOption(
+    val provider: String,
+    val providerLabel: String,
+    val modelId: String,
+    val displayModelId: String,
+)
+
+@Composable
+fun DefaultModelSelectionDialog(
+    options: List<DefaultModelDialogOption>,
+    selectedProvider: String,
+    selectedModelId: String,
+    onApplySelection: (DefaultModelDialogOption) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var localSelection by remember(options, selectedProvider, selectedModelId) {
+        mutableStateOf(
+            options.firstOrNull { it.provider == selectedProvider && it.modelId == selectedModelId },
+        )
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        shape = RoundedCornerShape(24.dp),
+        title = {
+            Text(
+                text = stringResource(R.string.settings_default_model_label),
+                style = MaterialTheme.typography.titleLarge,
+            )
+        },
+        text = {
+            if (options.isEmpty()) {
+                Text(
+                    text = stringResource(R.string.settings_default_model_none),
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            } else {
+                LazyColumn(modifier = Modifier.heightIn(max = 420.dp)) {
+                    items(options) { option ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { localSelection = option }
+                                .padding(vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            RadioButton(
+                                selected = localSelection == option,
+                                onClick = { localSelection = option },
+                            )
+                            Column(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .padding(start = 8.dp),
+                            ) {
+                                Text(
+                                    text = option.providerLabel,
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.primary,
+                                )
+                                Text(
+                                    text = option.displayModelId,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    localSelection?.let(onApplySelection)
+                },
+                enabled = localSelection != null,
+            ) {
+                Text(stringResource(R.string.settings_api_key_save))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.settings_model_close))
+            }
+        },
+    )
 }
 
 fun formatContextLength(contextLength: Int): String? {

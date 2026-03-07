@@ -238,6 +238,14 @@ console.log(JSON.stringify({
 class ProcessManager(
     private val prootManager: ProotManager,
 ) {
+    data class ModelSelectionEntry(
+        val id: String,
+        val supportsReasoning: Boolean = false,
+        val supportsImages: Boolean = false,
+        val contextLength: Int = 200000,
+        val maxOutputTokens: Int = 4096,
+    )
+
     companion object {
         private const val TAG = "ProcessManager"
         private const val GATEWAY_PORT = 18789
@@ -290,6 +298,22 @@ class ProcessManager(
     val isRunning: Boolean
         get() = _gatewayState.value.status == GatewayStatus.RUNNING
 
+    fun setConfigurationError(message: String) {
+        addLog("[andClaw] $message")
+        _gatewayState.value = _gatewayState.value.copy(
+            status = GatewayStatus.ERROR,
+            errorMessage = message,
+        )
+    }
+
+    fun setStoppedNotice(message: String) {
+        addLog("[andClaw] $message")
+        _gatewayState.value = _gatewayState.value.copy(
+            status = GatewayStatus.STOPPED,
+            errorMessage = message,
+        )
+    }
+
     suspend fun probeGatewayHealth(timeoutMs: Long = 8_000L): Boolean {
         if (_gatewayState.value.status != GatewayStatus.RUNNING) return false
         return withContext(Dispatchers.IO) {
@@ -314,6 +338,8 @@ class ProcessManager(
         apiProvider: String = "",
         apiKey: String = "",
         selectedModel: String = "",
+        selectedModels: List<ModelSelectionEntry> = emptyList(),
+        primaryModelId: String = "",
         openAiCompatibleBaseUrl: String = "",
         channelConfig: ChannelConfig = ChannelConfig(),
         modelReasoning: Boolean = false,
@@ -376,6 +402,8 @@ class ProcessManager(
                     apiProvider = apiProvider,
                     apiKey = apiKey,
                     selectedModel = selectedModel,
+                    selectedModels = selectedModels,
+                    primaryModelId = primaryModelId,
                     openAiCompatibleBaseUrl = openAiCompatibleBaseUrl,
                     modelReasoning = modelReasoning,
                     modelImages = modelImages,
@@ -558,6 +586,8 @@ class ProcessManager(
         apiProvider: String = "",
         apiKey: String = "",
         selectedModel: String = "",
+        selectedModels: List<ModelSelectionEntry> = emptyList(),
+        primaryModelId: String = "",
         openAiCompatibleBaseUrl: String = "",
         channelConfig: ChannelConfig = ChannelConfig(),
         modelReasoning: Boolean = false,
@@ -575,6 +605,8 @@ class ProcessManager(
             apiProvider = apiProvider,
             apiKey = apiKey,
             selectedModel = selectedModel,
+            selectedModels = selectedModels,
+            primaryModelId = primaryModelId,
             openAiCompatibleBaseUrl = openAiCompatibleBaseUrl,
             channelConfig = channelConfig,
             modelReasoning = modelReasoning,
@@ -714,6 +746,8 @@ class ProcessManager(
         apiProvider: String,
         apiKey: String = "",
         selectedModel: String = "",
+        selectedModels: List<ModelSelectionEntry> = emptyList(),
+        primaryModelId: String = "",
         openAiCompatibleBaseUrl: String = "",
         modelReasoning: Boolean = false,
         modelImages: Boolean = false,
@@ -750,70 +784,168 @@ class ProcessManager(
             val agents = json.optJSONObject("agents") ?: JSONObject().also { json.put("agents", it) }
             val defaults = agents.optJSONObject("defaults") ?: JSONObject().also { agents.put("defaults", it) }
 
-            // 현재 모델 확인
+            // 현재 모델/목록 확인
             val modelObj = defaults.optJSONObject("model")
             val currentModel = modelObj?.optString("primary", "") ?: ""
+            val currentModels = defaults.optJSONObject("models")
+            val currentModelKeys = buildList {
+                if (currentModels == null) return@buildList
+                val iterator = currentModels.keys()
+                while (iterator.hasNext()) {
+                    add(iterator.next())
+                }
+            }
 
-            // provider에 맞는 기본 모델 결정
-            // dialog의 model ID는 API 원본 (e.g. "openrouter/free", "qwen/qwen3-coder:free")
-            // OpenClaw은 "provider/model_id" 형식 (e.g. "openrouter/openrouter/free")
-            val targetModel = if (selectedModel.isNotBlank()) {
-                when (apiProvider) {
-                    "openrouter" -> "openrouter/$selectedModel"
+            val normalizedSelectedEntries = selectedModels
+                .mapNotNull { entry ->
+                    val modelId = entry.id.trim()
+                    if (modelId.isBlank()) return@mapNotNull null
+                    entry.copy(
+                        id = modelId,
+                        contextLength = entry.contextLength.coerceAtLeast(1),
+                        maxOutputTokens = entry.maxOutputTokens.coerceAtLeast(1),
+                    )
+                }
+                .distinctBy { it.id }
+                .toMutableList()
+
+            if (normalizedSelectedEntries.isEmpty()) {
+                val fallbackId = selectedModel.trim()
+                if (fallbackId.isNotBlank()) {
+                    normalizedSelectedEntries += ModelSelectionEntry(
+                        id = fallbackId,
+                        supportsReasoning = modelReasoning,
+                        supportsImages = modelImages,
+                        contextLength = modelContext,
+                        maxOutputTokens = modelMaxOutput,
+                    )
+                }
+            }
+
+            if (normalizedSelectedEntries.isEmpty()) {
+                val defaultModelId = when (apiProvider) {
+                    "openrouter" -> "openrouter/free"
+                    "anthropic" -> "claude-sonnet-4-5"
+                    "openai" -> "gpt-5-mini"
+                    "openai-codex" -> "gpt-5.3-codex"
+                    "openai-compatible" -> "gpt-4o-mini"
+                    "google" -> "gemini-2.5-flash"
+                    else -> "openrouter/free"
+                }
+                normalizedSelectedEntries += ModelSelectionEntry(
+                    id = defaultModelId,
+                    supportsReasoning = modelReasoning,
+                    supportsImages = modelImages,
+                    contextLength = modelContext,
+                    maxOutputTokens = modelMaxOutput,
+                )
+            }
+
+            fun toProviderScopedModel(modelIdRaw: String): String {
+                val modelId = modelIdRaw.trim()
+                return when (apiProvider) {
+                    "openrouter" -> "openrouter/$modelId"
                     "anthropic" -> {
                         val id = when {
-                            selectedModel.startsWith("anthropic/") -> selectedModel.removePrefix("anthropic/")
-                            selectedModel.contains("/") -> "claude-sonnet-4-5"
-                            else -> selectedModel
+                            modelId.startsWith("anthropic/") -> modelId.removePrefix("anthropic/")
+                            modelId.contains("/") -> "claude-sonnet-4-5"
+                            else -> modelId
                         }
                         "anthropic/$id"
                     }
                     "openai" -> {
                         val id = when {
-                            selectedModel.startsWith("openai/") -> selectedModel.removePrefix("openai/")
-                            selectedModel.contains("/") -> "gpt-5-mini"
-                            else -> selectedModel
+                            modelId.startsWith("openai/") -> modelId.removePrefix("openai/")
+                            modelId.contains("/") -> "gpt-5-mini"
+                            else -> modelId
                         }
                         "openai/$id"
                     }
                     "openai-codex" -> {
                         val id = when {
-                            selectedModel.startsWith("openai/") -> selectedModel.removePrefix("openai/")
-                            selectedModel.startsWith("openai-codex/") -> selectedModel.removePrefix("openai-codex/")
-                            selectedModel.isNotBlank() -> selectedModel
+                            modelId.startsWith("openai/") -> modelId.removePrefix("openai/")
+                            modelId.startsWith("openai-codex/") -> modelId.removePrefix("openai-codex/")
+                            modelId.isNotBlank() -> modelId
                             else -> "gpt-5.3-codex"
                         }
                         "openai-codex/$id"
                     }
                     "openai-compatible" -> {
-                        val id = selectedModel.removePrefix("openai-compatible/")
+                        val id = modelId.removePrefix("openai-compatible/")
                         "openai-compatible/$id"
                     }
                     "google" -> {
                         val id = when {
-                            selectedModel.startsWith("google/") -> selectedModel.removePrefix("google/")
-                            selectedModel.contains("/") -> "gemini-2.5-flash"
-                            else -> selectedModel
+                            modelId.startsWith("google/") -> modelId.removePrefix("google/")
+                            modelId.contains("/") -> "gemini-2.5-flash"
+                            else -> modelId
                         }
                         "google/$id"
                     }
-                    else -> "openrouter/$selectedModel"
-                }
-            } else {
-                when (apiProvider) {
-                    "openrouter" -> "openrouter/openrouter/free"
-                    "anthropic" -> "anthropic/claude-sonnet-4-5"
-                    "openai" -> "openai/gpt-5-mini"
-                    "openai-codex" -> "openai-codex/gpt-5.3-codex"
-                    "openai-compatible" -> "openai-compatible/gpt-4o-mini"
-                    "google" -> "google/gemini-2.5-flash"
-                    else -> "openrouter/openrouter/free"
+                    else -> "openrouter/$modelId"
                 }
             }
+
+            val selectedIdSet = normalizedSelectedEntries.map { it.id }.toSet()
+            val requestedPrimary = primaryModelId.trim().ifBlank { selectedModel.trim() }
+            val effectivePrimaryId = when {
+                requestedPrimary.isNotBlank() && selectedIdSet.contains(requestedPrimary) -> requestedPrimary
+                else -> normalizedSelectedEntries.first().id
+            }
+            val targetModel = toProviderScopedModel(effectivePrimaryId)
+            val targetModels = normalizedSelectedEntries
+                .map { toProviderScopedModel(it.id) }
+                .distinct()
+            fun modelPrefixesForProvider(provider: String): Set<String> = when (provider) {
+                "openrouter" -> setOf("openrouter/", "nvidia/")
+                "anthropic" -> setOf("anthropic/")
+                "openai" -> setOf("openai/")
+                "openai-codex" -> setOf("openai-codex/")
+                "openai-compatible" -> setOf("openai-compatible/")
+                "google" -> setOf("google/")
+                else -> setOf("${provider.trim().lowercase()}/")
+            }
+            val providerModelPrefixes = modelPrefixesForProvider(apiProvider)
+            val mergedModelKeys = buildList {
+                addAll(
+                    currentModelKeys.filterNot { existingModelId ->
+                        providerModelPrefixes.any { prefix -> existingModelId.startsWith(prefix) }
+                    },
+                )
+                addAll(targetModels)
+            }.distinct()
+            val registeredCustomModelIds = readRegisteredCustomModelIdsByProvider()
+            val builtInOpenRouterModelIds = getBuiltInOpenRouterModelIds()
+            fun isResolvableModelKey(modelKey: String): Boolean {
+                return when {
+                    modelKey.startsWith("openai-compatible/") -> {
+                        val id = modelKey.removePrefix("openai-compatible/")
+                        val currentTarget = apiProvider == "openai-compatible" && modelKey in targetModels
+                        currentTarget || registeredCustomModelIds["openai-compatible"].orEmpty().contains(id)
+                    }
+
+                    modelKey.startsWith("openrouter/") -> {
+                        val id = modelKey.removePrefix("openrouter/")
+                        val currentTarget = apiProvider == "openrouter" && modelKey in targetModels
+                        currentTarget ||
+                            builtInOpenRouterModelIds.contains(id) ||
+                            registeredCustomModelIds["openrouter"].orEmpty().contains(id)
+                    }
+
+                    modelKey.startsWith("nvidia/") -> {
+                        val id = modelKey.removePrefix("nvidia/")
+                        builtInOpenRouterModelIds.contains(id) ||
+                            registeredCustomModelIds["openrouter"].orEmpty().contains(id)
+                    }
+
+                    else -> true
+                }
+            }
+            val resolvedModelKeys = mergedModelKeys.filter(::isResolvableModelKey)
             if (apiProvider == "openai-compatible") {
                 addLog(
                     "[andClaw][Debug] OpenAI-compatible target model resolved: " +
-                        "selected='$selectedModel' -> primary='$targetModel'"
+                        "selected=${normalizedSelectedEntries.map { it.id }} -> primary='$targetModel'"
                 )
             }
 
@@ -930,17 +1062,24 @@ class ProcessManager(
                 }
             }
 
-            // 모델이 설정 안 됐거나 다른 모델이면 업데이트
-            if (currentModel.isBlank() || currentModel != targetModel) {
-                addLog("[andClaw] Model config updated: $targetModel")
+            val shouldUpdatePrimary = currentModel.isBlank() || currentModel != targetModel
+            val shouldUpdateModels = currentModelKeys.toSet() != resolvedModelKeys.toSet()
+            if (shouldUpdatePrimary || shouldUpdateModels) {
+                addLog("[andClaw] Model config updated: primary=$targetModel, count=${resolvedModelKeys.size}")
                 val newModelObj = JSONObject().apply {
                     put("primary", targetModel)
                 }
                 defaults.put("model", newModelObj)
 
-                // models 목록도 추가
                 val modelsObj = JSONObject().apply {
-                    put(targetModel, JSONObject())
+                    resolvedModelKeys.forEach { modelKey ->
+                        val existingModelObject = currentModels?.optJSONObject(modelKey)
+                        if (existingModelObject != null) {
+                            put(modelKey, JSONObject(existingModelObject.toString()))
+                        } else {
+                            put(modelKey, JSONObject())
+                        }
+                    }
                 }
                 defaults.put("models", modelsObj)
                 changed = true
@@ -950,41 +1089,47 @@ class ProcessManager(
             // 내장 모델(models.generated.js에 정의됨)은 compat 설정 포함 정확한 정의를 갖고 있으므로
             // 커스텀 등록으로 덮어쓰면 안 된다. 비내장 모델만 models.json에 등록.
             if (apiProvider == "openrouter") {
-                val modelId = if (selectedModel.isNotBlank()) selectedModel else "openrouter/free"
-                val builtInIds = getBuiltInOpenRouterModelIds()
-                val modelsJsonFile = File(prootManager.rootfsDir, "root/.openclaw/agents/main/agent/models.json")
+                val modelEntriesById = normalizedSelectedEntries.associateBy { it.id }
+                val selectedModelIds = modelEntriesById.keys.ifEmpty { setOf("openrouter/free") }
+                val builtInIds = builtInOpenRouterModelIds
 
-                if (builtInIds.contains(modelId)) {
-                    // 내장 모델: models.json 제거 (이전 커스텀 등록이 내장 정의를 덮어쓰지 않도록)
-                    if (modelsJsonFile.exists()) modelsJsonFile.delete()
-                    addLog("[andClaw] Model '$modelId' is built-in - using native definition")
+                val customEntries = selectedModelIds
+                    .filterNot { builtInIds.contains(it) }
+                    .map { modelId ->
+                        modelEntriesById[modelId] ?: ModelSelectionEntry(
+                            id = modelId,
+                            supportsReasoning = modelReasoning,
+                            supportsImages = modelImages,
+                            contextLength = modelContext,
+                            maxOutputTokens = modelMaxOutput,
+                        )
+                    }
+
+                if (customEntries.isEmpty()) {
+                    removeProviderModelsJson("openrouter")
+                    addLog("[andClaw] OpenRouter selected models are built-in - using native definitions")
                 } else {
-                    // 비내장 모델: models.json에 커스텀 등록 (ModelRegistry가 직접 읽음)
-                    writeModelsJson(modelId, modelReasoning, modelImages, modelContext, modelMaxOutput)
-                    addLog("[andClaw] Model '$modelId' not built-in - registered in models.json")
+                    writeModelsJson(customEntries)
+                    addLog("[andClaw] Registered ${customEntries.size} custom OpenRouter model(s) in models.json")
                 }
                 // openclaw.json에서 models.providers 섹션 제거 (models.json으로 이관)
                 json.optJSONObject("models")?.remove("providers")
                 changed = true
             } else if (apiProvider == "openai-compatible") {
-                val modelId = if (selectedModel.isNotBlank()) {
-                    selectedModel.removePrefix("openai-compatible/")
-                } else {
-                    "gpt-4o-mini"
-                }
+                val compatEntries = normalizedSelectedEntries
+                    .map { entry ->
+                        entry.copy(id = entry.id.removePrefix("openai-compatible/"))
+                    }
                 val normalizedBaseUrl = normalizeOpenAiCompatibleBaseUrl(openAiCompatibleBaseUrl)
                 writeOpenAiCompatibleModelsJson(
-                    modelId = modelId,
+                    modelEntries = compatEntries,
                     baseUrl = normalizedBaseUrl,
-                    modelReasoning = modelReasoning,
-                    modelImages = modelImages,
-                    modelContext = modelContext,
-                    modelMaxOutput = modelMaxOutput,
+                    apiKey = apiKey,
                 )
                 json.optJSONObject("models")?.remove("providers")
                 addLog(
                     "[andClaw] OpenAI-compatible provider configured: " +
-                        "model='$modelId', baseUrl='$normalizedBaseUrl'"
+                        "models=${compatEntries.map { it.id }}, baseUrl='$normalizedBaseUrl'"
                 )
                 changed = true
             }
@@ -1379,44 +1524,25 @@ class ProcessManager(
      * 경로: ~/.openclaw/agents/main/agent/models.json
      */
     private fun writeModelsJson(
-        modelId: String,
-        modelReasoning: Boolean,
-        modelImages: Boolean,
-        modelContext: Int,
-        modelMaxOutput: Int,
+        modelEntries: List<ModelSelectionEntry>,
     ) {
         try {
-            val modelsJsonFile = File(prootManager.rootfsDir, "root/.openclaw/agents/main/agent/models.json")
-            modelsJsonFile.parentFile?.mkdirs()
-
-            val inputTypes = org.json.JSONArray().apply {
-                put("text")
-                if (modelImages) put("image")
-            }
-
-            val json = JSONObject().apply {
-                put("providers", JSONObject().apply {
-                    put("openrouter", JSONObject().apply {
-                        put("baseUrl", "https://openrouter.ai/api/v1")
-                        put("apiKey", "\${OPENROUTER_API_KEY}")
-                        put("models", org.json.JSONArray().apply {
-                            put(JSONObject().apply {
-                                put("id", modelId)
-                                put("name", modelId)
-                                put("api", "openai-completions")
-                                put("reasoning", modelReasoning)
-                                put("input", inputTypes)
-                                put("cost", JSONObject().apply {
-                                    put("input", 0); put("output", 0); put("cacheRead", 0); put("cacheWrite", 0)
-                                })
-                                put("contextWindow", modelContext)
-                                put("maxTokens", modelMaxOutput)
-                            })
-                        })
+            upsertProviderModelsJson(
+                provider = "openrouter",
+                providerConfig = JSONObject().apply {
+                    put("baseUrl", "https://openrouter.ai/api/v1")
+                    put("apiKey", "\${OPENROUTER_API_KEY}")
+                    put("models", org.json.JSONArray().apply {
+                        modelEntries
+                            .map { it.copy(id = it.id.trim()) }
+                            .filter { it.id.isNotBlank() }
+                            .distinctBy { it.id }
+                            .forEach { entry ->
+                                put(buildModelEntryJson(entry))
+                            }
                     })
-                })
-            }
-            modelsJsonFile.writeText(json.toString(2))
+                },
+            )
         } catch (e: Exception) {
             addLog("[andClaw] Failed to write models.json: ${e.message}")
         }
@@ -1429,47 +1555,116 @@ class ProcessManager(
     }
 
     private fun writeOpenAiCompatibleModelsJson(
-        modelId: String,
+        modelEntries: List<ModelSelectionEntry>,
         baseUrl: String,
-        modelReasoning: Boolean,
-        modelImages: Boolean,
-        modelContext: Int,
-        modelMaxOutput: Int,
+        apiKey: String,
     ) {
         try {
-            val modelsJsonFile = File(prootManager.rootfsDir, "root/.openclaw/agents/main/agent/models.json")
-            modelsJsonFile.parentFile?.mkdirs()
-
-            val inputTypes = org.json.JSONArray().apply {
-                put("text")
-                if (modelImages) put("image")
-            }
-
-            val json = JSONObject().apply {
-                put("providers", JSONObject().apply {
-                    put("openai-compatible", JSONObject().apply {
-                        put("baseUrl", baseUrl)
+            upsertProviderModelsJson(
+                provider = "openai-compatible",
+                providerConfig = JSONObject().apply {
+                    put("baseUrl", baseUrl)
+                    if (apiKey.isNotBlank()) {
                         put("apiKey", "\${OPENAI_COMPAT_API_KEY}")
-                        put("models", org.json.JSONArray().apply {
-                            put(JSONObject().apply {
-                                put("id", modelId)
-                                put("name", modelId)
-                                put("api", "openai-completions")
-                                put("reasoning", modelReasoning)
-                                put("input", inputTypes)
-                                put("cost", JSONObject().apply {
-                                    put("input", 0); put("output", 0); put("cacheRead", 0); put("cacheWrite", 0)
-                                })
-                                put("contextWindow", modelContext)
-                                put("maxTokens", modelMaxOutput)
-                            })
-                        })
+                    }
+                    put("models", org.json.JSONArray().apply {
+                        modelEntries
+                            .map { it.copy(id = it.id.trim()) }
+                            .filter { it.id.isNotBlank() }
+                            .distinctBy { it.id }
+                            .forEach { entry ->
+                                put(buildModelEntryJson(entry))
+                            }
                     })
-                })
-            }
-            modelsJsonFile.writeText(json.toString(2))
+                },
+            )
         } catch (e: Exception) {
             addLog("[andClaw] Failed to write openai-compatible models.json: ${e.message}")
+        }
+    }
+
+    private fun modelsJsonFile(): File =
+        File(prootManager.rootfsDir, "root/.openclaw/agents/main/agent/models.json")
+
+    private fun readRegisteredCustomModelIdsByProvider(): Map<String, Set<String>> {
+        return runCatching {
+            val file = modelsJsonFile()
+            if (!file.exists()) return emptyMap()
+            val root = JSONObject(file.readText())
+            val providers = root.optJSONObject("providers") ?: return emptyMap()
+            buildMap {
+                val providerKeys = providers.keys()
+                while (providerKeys.hasNext()) {
+                    val provider = providerKeys.next()
+                    val providerObject = providers.optJSONObject(provider) ?: continue
+                    val models = providerObject.optJSONArray("models") ?: continue
+                    val ids = buildSet {
+                        for (index in 0 until models.length()) {
+                            val modelObject = models.optJSONObject(index) ?: continue
+                            val id = modelObject.optString("id").trim()
+                            if (id.isNotBlank()) add(id)
+                        }
+                    }
+                    if (ids.isNotEmpty()) {
+                        put(provider, ids)
+                    }
+                }
+            }
+        }.getOrDefault(emptyMap())
+    }
+
+    private fun upsertProviderModelsJson(
+        provider: String,
+        providerConfig: JSONObject,
+    ) {
+        val file = modelsJsonFile()
+        file.parentFile?.mkdirs()
+        val root = if (file.exists()) {
+            runCatching { JSONObject(file.readText()) }.getOrElse { JSONObject() }
+        } else {
+            JSONObject()
+        }
+        val providers = root.optJSONObject("providers") ?: JSONObject().also { root.put("providers", it) }
+        providers.put(provider, JSONObject(providerConfig.toString()))
+        file.writeText(root.toString(2))
+    }
+
+    private fun removeProviderModelsJson(provider: String) {
+        val file = modelsJsonFile()
+        if (!file.exists()) return
+        runCatching {
+            val root = JSONObject(file.readText())
+            val providers = root.optJSONObject("providers") ?: return
+            providers.remove(provider)
+            if (providers.length() == 0) {
+                file.delete()
+                return
+            }
+            file.writeText(root.toString(2))
+        }.onFailure { throwable ->
+            addLog("[andClaw] Failed to remove $provider from models.json: ${throwable.message}")
+        }
+    }
+
+    private fun buildModelEntryJson(entry: ModelSelectionEntry): JSONObject {
+        val inputTypes = org.json.JSONArray().apply {
+            put("text")
+            if (entry.supportsImages) put("image")
+        }
+        return JSONObject().apply {
+            put("id", entry.id)
+            put("name", entry.id)
+            put("api", "openai-completions")
+            put("reasoning", entry.supportsReasoning)
+            put("input", inputTypes)
+            put("cost", JSONObject().apply {
+                put("input", 0)
+                put("output", 0)
+                put("cacheRead", 0)
+                put("cacheWrite", 0)
+            })
+            put("contextWindow", entry.contextLength.coerceAtLeast(1))
+            put("maxTokens", entry.maxOutputTokens.coerceAtLeast(1))
         }
     }
 

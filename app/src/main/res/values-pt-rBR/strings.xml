@@ -105,6 +105,7 @@
     <string name="settings_api_key">Chave de API</string>
     <string name="settings_api_key_configured">Configurado</string>
     <string name="settings_api_key_not_configured">Não configurado</string>
+    <string name="settings_api_key_not_required">Não é obrigatório</string>
     <string name="settings_api_key_hint">Digite sua chave de API</string>
     <string name="settings_api_key_save">Salvar</string>
     <string name="settings_api_key_cancel">Cancelar</string>
@@ -112,7 +113,12 @@
     <string name="settings_restart_confirm_message">Reiniciar o gateway agora?</string>
     <string name="settings_restart_confirm_yes">Sim</string>
     <string name="settings_restart_confirm_no">Não</string>
-<string name="settings_select_model">Selecionar modelo</string>
+    <string name="settings_select_model">Selecionar modelo</string>
+
+    <string name="settings_default_model_label">Modelo padrão</string>
+    <string name="settings_default_model_none">Nenhum modelo padrão selecionado</string>
+    <string name="settings_tab_model">Modelo</string>
+
     <string name="settings_model_default">Padrão (Auto Select Free)</string>
     <string name="settings_model_restart_hint">Reinicie o gateway para aplicar o novo modelo</string>
     <string name="settings_model_loading">Carregando modelos…</string>
@@ -122,6 +128,7 @@
     <string name="settings_model_close">Fechar</string>
     <string name="settings_model_section_free">Gratuito</string>
     <string name="settings_model_free_warning">Modelos gratuitos podem ser lentos ou não responder durante alta demanda</string>
+    <string name="settings_model_selection_guide">Você pode selecionar modelos para usar ou deixar a lista vazia. Também pode definir um dos modelos selecionados como modelo padrão.</string>
     <string name="settings_model_section_paid">Pago</string>
     <string name="settings_section_about">Sobre</string>
     <string name="settings_disclaimer">Este aplicativo não é um aplicativo oficial do OpenClaw</string>

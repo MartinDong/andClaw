@@ -131,6 +131,7 @@
     <string name="settings_api_key">API Key</string>
     <string name="settings_api_key_configured">Configured</string>
     <string name="settings_api_key_not_configured">Not configured</string>
+    <string name="settings_api_key_not_required">Not required</string>
     <string name="settings_api_key_hint">Enter your API key</string>
     <string name="settings_api_key_save">Save</string>
     <string name="settings_api_key_cancel">Cancel</string>
@@ -140,6 +141,11 @@
     <string name="settings_restart_confirm_yes">Yes</string>
     <string name="settings_restart_confirm_no">No</string>
     <string name="settings_select_model">Select model</string>
+
+    <string name="settings_default_model_label">Default model</string>
+    <string name="settings_default_model_none">No default model selected</string>
+    <string name="settings_tab_model">Model</string>
+
     <string name="settings_model_default">Default (Auto Select Free)</string>
     <string name="settings_model_restart_hint">Restart the gateway to apply the new model</string>
     <string name="settings_model_loading">Loading models…</string>
@@ -149,6 +155,7 @@
     <string name="settings_model_close">Close</string>
     <string name="settings_model_section_free">Free</string>
     <string name="settings_model_free_warning">Free models may be slow or unresponsive during high demand</string>
+    <string name="settings_model_selection_guide">You can select models to use, or leave the list empty. You can also set one selected model as the default model.</string>
     <string name="settings_model_section_paid">Paid</string>
     <string name="settings_section_about">About</string>
     <string name="settings_disclaimer">This app is not an official OpenClaw app</string>

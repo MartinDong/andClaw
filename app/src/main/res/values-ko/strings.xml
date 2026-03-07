@@ -116,6 +116,7 @@
     <string name="settings_api_key">API 키</string>
     <string name="settings_api_key_configured">설정됨</string>
     <string name="settings_api_key_not_configured">미설정</string>
+    <string name="settings_api_key_not_required">필수 아님</string>
     <string name="settings_api_key_hint">API 키를 입력하세요</string>
     <string name="settings_api_key_save">저장</string>
     <string name="settings_api_key_cancel">취소</string>
@@ -124,6 +125,11 @@
     <string name="settings_restart_confirm_yes">예</string>
     <string name="settings_restart_confirm_no">아니오</string>
     <string name="settings_select_model">모델 선택</string>
+
+    <string name="settings_default_model_label">기본 모델</string>
+    <string name="settings_default_model_none">선택된 기본 모델 없음</string>
+    <string name="settings_tab_model">모델</string>
+
     <string name="settings_model_default">기본값 (Auto Select Free)</string>
     <string name="settings_model_restart_hint">새 모델을 적용하려면 게이트웨이를 재시작하세요</string>
     <string name="settings_model_loading">모델 불러오는 중…</string>
@@ -133,6 +139,7 @@
     <string name="settings_model_close">닫기</string>
     <string name="settings_model_section_free">무료</string>
     <string name="settings_model_free_warning">무료 모델은 서버 혼잡 시 응답이 느리거나 없을 수 있습니다</string>
+    <string name="settings_model_selection_guide">사용할 모델을 선택하거나 목록을 비워둘 수 있습니다. 필요하면 선택한 모델 중 하나를 기본 모델로 지정할 수 있습니다.</string>
     <string name="settings_model_section_paid">유료</string>
     <string name="settings_section_about">정보</string>
     <string name="settings_disclaimer">이 앱은 OpenClaw의 공식 앱이 아닙니다</string>

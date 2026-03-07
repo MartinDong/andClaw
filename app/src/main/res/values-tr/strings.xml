@@ -105,6 +105,7 @@
     <string name="settings_api_key">API Anahtarı</string>
     <string name="settings_api_key_configured">Yapılandırıldı</string>
     <string name="settings_api_key_not_configured">Yapılandırılmadı</string>
+    <string name="settings_api_key_not_required">Gerekli değil</string>
     <string name="settings_api_key_hint">API anahtarınızı girin</string>
     <string name="settings_api_key_save">Kaydet</string>
     <string name="settings_api_key_cancel">İptal</string>
@@ -112,7 +113,12 @@
     <string name="settings_restart_confirm_message">Ağ geçidi şimdi yeniden başlatılsın mı?</string>
     <string name="settings_restart_confirm_yes">Evet</string>
     <string name="settings_restart_confirm_no">Hayır</string>
-<string name="settings_select_model">Model seçin</string>
+    <string name="settings_select_model">Model seçin</string>
+
+    <string name="settings_default_model_label">Varsayılan model</string>
+    <string name="settings_default_model_none">Seçilmiş varsayılan model yok</string>
+    <string name="settings_tab_model">Model</string>
+
     <string name="settings_model_default">Varsayılan (Auto Select Free)</string>
     <string name="settings_model_restart_hint">Yeni modeli uygulamak için ağ geçidini yeniden başlatın</string>
     <string name="settings_model_loading">Modeller yükleniyor…</string>
@@ -122,6 +128,7 @@
     <string name="settings_model_close">Kapat</string>
     <string name="settings_model_section_free">Ücretsiz</string>
     <string name="settings_model_free_warning">Ücretsiz modeller yoğun talep sırasında yavaş olabilir veya yanıt vermeyebilir</string>
+    <string name="settings_model_selection_guide">Kullanmak için modeller seçebilir veya listeyi boş bırakabilirsiniz. Ayrıca seçtiğiniz modellerden birini varsayılan model olarak ayarlayabilirsiniz.</string>
     <string name="settings_model_section_paid">Ücretli</string>
     <string name="settings_section_about">Hakkında</string>
     <string name="settings_disclaimer">Bu uygulama resmi bir OpenClaw uygulaması değildir</string>
