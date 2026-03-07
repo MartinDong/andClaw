@@ -1080,7 +1080,11 @@ class SetupManager(
         return@withContext runBundleUpdateWithPolicy(
             onStepChanged = onStepChanged,
             timeoutMs = timeoutMs,
-            manualRetry = manualRetry,
+            requestKind = if (manualRetry) {
+                BundleUpdateRequestKind.MANUAL_RETRY
+            } else {
+                BundleUpdateRequestKind.AUTO
+            },
             includeOpenClawAssetUpdate = includeOpenClawAssetUpdate,
             forceOpenClawReinstall = forceOpenClawReinstall,
         )
@@ -1090,7 +1094,7 @@ class SetupManager(
         return@withContext runBundleUpdateWithPolicy(
             onStepChanged = onStepChanged,
             timeoutMs = DEFAULT_UPDATE_TIMEOUT_MS,
-            manualRetry = true,
+            requestKind = BundleUpdateRequestKind.RECOVERY,
             // Keep currently working runtime files until recovery actually succeeds.
             // Clearing install markers is enough to force re-install on the recovery path.
             beforeUpdate = { clearDependentInstallMarkers(clearNodeMarkers = false) },
@@ -1103,7 +1107,7 @@ class SetupManager(
     private suspend fun runBundleUpdateWithPolicy(
         onStepChanged: ((SetupStep) -> Unit)? = null,
         timeoutMs: Long,
-        manualRetry: Boolean,
+        requestKind: BundleUpdateRequestKind,
         beforeUpdate: (() -> Unit)? = null,
         allowWhenUpdateNotRequired: Boolean = false,
         includeOpenClawAssetUpdate: Boolean = false,
@@ -1113,12 +1117,18 @@ class SetupManager(
         val prefs = preferencesManager
         var consumeManualRetryOnFailure = false
         val failure = prefs?.getBundleUpdateFailure(appVersion)?.let(::toFailureState)
+        val shouldApplyFailurePolicy = requestKind != BundleUpdateRequestKind.RECOVERY
 
         if (failure != null && !failure.inCooldown && failure.manualRetryUsed) {
             // A previous cooldown window has ended; manual retry allowance reopens.
             prefs.setBundleUpdateManualRetryUsed(appVersion, false)
         }
-        if (failure?.inCooldown == true && manualRetry && !failure.manualRetryUsed) {
+        if (
+            shouldApplyFailurePolicy &&
+            requestKind == BundleUpdateRequestKind.MANUAL_RETRY &&
+            failure?.inCooldown == true &&
+            !failure.manualRetryUsed
+        ) {
             consumeManualRetryOnFailure = true
         }
 
@@ -1140,8 +1150,8 @@ class SetupManager(
                 var skipBundleUpdateDueToPolicy = false
                 var skipOutcome = BundleUpdateOutcome.SKIPPED_NOT_REQUIRED
                 var skipFailure: BundleUpdateFailureState? = null
-                if (failure?.inCooldown == true) {
-                    if (!manualRetry) {
+                if (shouldApplyFailurePolicy && failure?.inCooldown == true) {
+                    if (requestKind == BundleUpdateRequestKind.AUTO) {
                         if (!nodeRepairRequired) {
                             return@withTimeout BundleUpdateAttemptResult(
                                 outcome = BundleUpdateOutcome.SKIPPED_COOLDOWN,
@@ -1151,7 +1161,10 @@ class SetupManager(
                         skipBundleUpdateDueToPolicy = true
                         skipOutcome = BundleUpdateOutcome.SKIPPED_COOLDOWN
                         skipFailure = failure
-                    } else if (failure.manualRetryUsed) {
+                    } else if (
+                        requestKind == BundleUpdateRequestKind.MANUAL_RETRY &&
+                        failure.manualRetryUsed
+                    ) {
                         if (!nodeRepairRequired) {
                             return@withTimeout BundleUpdateAttemptResult(
                                 outcome = BundleUpdateOutcome.SKIPPED_MANUAL_RETRY_EXHAUSTED,
@@ -1425,6 +1438,12 @@ class SetupManager(
                 "disk i/o" in message -> BundleUpdateFailureType.IO_ERROR
             else -> BundleUpdateFailureType.UNKNOWN
         }
+    }
+
+    private enum class BundleUpdateRequestKind {
+        AUTO,
+        MANUAL_RETRY,
+        RECOVERY,
     }
 
     private companion object {
