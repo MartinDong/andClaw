@@ -1143,10 +1143,42 @@ class ProcessManager(
                 changed = true
             }
 
-            // gateway.controlUi.allowedOrigins 설정 (앱 내 WebSocket 연결 허용)
+            // gateway.port 설정
+            if (!gateway.has("port")) {
+                gateway.put("port", 18789)
+                changed = true
+            }
+
+            // gateway.bind 설정
+            if (!gateway.has("bind")) {
+                gateway.put("bind", "lan")
+                changed = true
+            }
+
+            // gateway.controlUi 설정
             val controlUi = gateway.optJSONObject("controlUi") ?: JSONObject().also { gateway.put("controlUi", it) }
+            
+            // allowedOrigins 설정
             if (!controlUi.has("allowedOrigins")) {
                 controlUi.put("allowedOrigins", org.json.JSONArray().apply { put("*") })
+                changed = true
+            }
+
+            // dangerouslyAllowHostHeaderOriginFallback 설정
+            if (!controlUi.has("dangerouslyAllowHostHeaderOriginFallback")) {
+                controlUi.put("dangerouslyAllowHostHeaderOriginFallback", true)
+                changed = true
+            }
+
+            // allowInsecureAuth 설정
+            if (!controlUi.has("allowInsecureAuth")) {
+                controlUi.put("allowInsecureAuth", true)
+                changed = true
+            }
+
+            // dangerouslyDisableDeviceAuth 설정
+            if (!controlUi.has("dangerouslyDisableDeviceAuth")) {
+                controlUi.put("dangerouslyDisableDeviceAuth", true)
                 changed = true
             }
 
