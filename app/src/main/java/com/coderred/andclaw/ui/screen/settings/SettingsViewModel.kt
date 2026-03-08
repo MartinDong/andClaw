@@ -79,6 +79,12 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         val output: String,
     )
 
+    data class CommandExecutionResult(
+        val success: Boolean,
+        val output: String,
+        val commandName: String,
+    )
+
     data class BugReportPreview(
         val sessionErrorCount: Int = 0,
         val hasGatewayError: Boolean = false,
@@ -254,6 +260,11 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     val installedOpenClawVersion: StateFlow<String?> = _installedOpenClawVersion.asStateFlow()
     private val _bundledOpenClawVersion = MutableStateFlow<String?>(null)
     val bundledOpenClawVersion: StateFlow<String?> = _bundledOpenClawVersion.asStateFlow()
+
+    private val _isCommandRunning = MutableStateFlow(false)
+    val isCommandRunning: StateFlow<Boolean> = _isCommandRunning.asStateFlow()
+    private val _commandResult = MutableStateFlow<CommandExecutionResult?>(null)
+    val commandResult: StateFlow<CommandExecutionResult?> = _commandResult.asStateFlow()
     private val _bugReportUiState = MutableStateFlow(BugReportUiState())
     val bugReportUiState: StateFlow<BugReportUiState> = _bugReportUiState.asStateFlow()
     private val codexAuthRunning = AtomicBoolean(false)
@@ -961,6 +972,80 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
 
     fun consumeRecoveryInstallResult() {
         _recoveryInstallResult.value = null
+    }
+
+    fun consumeCommandResult() {
+        _commandResult.value = null
+    }
+
+    fun runOpenClawCommand(command: String, commandName: String) {
+        if (_isCommandRunning.value || _isDoctorFixRunning.value || _isRecoveryInstallRunning.value || _isOpenClawUpdateRunning.value) return
+        _isCommandRunning.value = true
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val launchConfig = prefs.getGatewayLaunchConfigSnapshot()
+                val provider = launchConfig.apiProvider
+                val apiKey = launchConfig.apiKey
+                val braveApiKey = prefs.braveSearchApiKey.first()
+                val memorySearchApiKey = prefs.memorySearchApiKey.first()
+                val channelConfig = prefs.channelConfig.first()
+
+                val commandEnv = buildMap {
+                    fun resolved(value: String): String = value.ifBlank { "__andclaw_env_placeholder__" }
+
+                    put("OPENROUTER_API_KEY", "__andclaw_env_placeholder__")
+                    put("OPENAI_API_KEY", "__andclaw_env_placeholder__")
+                    put("OPENAI_COMPAT_API_KEY", "__andclaw_env_placeholder__")
+                    put("ANTHROPIC_API_KEY", "__andclaw_env_placeholder__")
+                    put("GOOGLE_API_KEY", "__andclaw_env_placeholder__")
+                    put("GEMINI_API_KEY", "__andclaw_env_placeholder__")
+                    put("BRAVE_API_KEY", resolved(braveApiKey))
+                    put("BRAVE_SEARCH_API_KEY", resolved(braveApiKey))
+                    put("MEMORY_SEARCH_API_KEY", resolved(memorySearchApiKey))
+                    put("TELEGRAM_BOT_TOKEN", resolved(channelConfig.telegramBotToken))
+                    put("DISCORD_BOT_TOKEN", resolved(channelConfig.discordBotToken))
+
+                    if (apiKey.isNotBlank()) {
+                        when (provider) {
+                            "anthropic" -> put("ANTHROPIC_API_KEY", apiKey)
+                            "openai" -> put("OPENAI_API_KEY", apiKey)
+                            "openai-compatible" -> put("OPENAI_COMPAT_API_KEY", apiKey)
+                            "openrouter" -> put("OPENROUTER_API_KEY", apiKey)
+                            "google" -> {
+                                put("GOOGLE_API_KEY", apiKey)
+                                put("GEMINI_API_KEY", apiKey)
+                            }
+                        }
+                    }
+                }
+
+                val fullCommand = "export NODE_OPTIONS='--require /root/.openclaw-patch.js' && $command 2>&1"
+                val result = prootManager.executeWithResult(
+                    command = fullCommand,
+                    timeoutMs = 300_000,
+                    extraEnv = commandEnv,
+                )
+                _commandResult.value = when {
+                    result == null -> CommandExecutionResult(
+                        success = false,
+                        output = "Failed to execute command.",
+                        commandName = commandName,
+                    )
+                    result.timedOut -> CommandExecutionResult(
+                        success = false,
+                        output = "Command timed out after 300 seconds.\n\n${result.output}",
+                        commandName = commandName,
+                    )
+                    else -> CommandExecutionResult(
+                        success = result.exitCode == 0,
+                        output = result.output.ifBlank { "No output." },
+                        commandName = commandName,
+                    )
+                }
+            } finally {
+                _isCommandRunning.value = false
+            }
+        }
     }
 
     fun openBugReportDialog() {

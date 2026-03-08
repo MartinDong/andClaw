@@ -29,6 +29,9 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.BatteryAlert
 import androidx.compose.material.icons.automirrored.filled.Chat
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.Error
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.PowerSettingsNew
 import androidx.compose.material.icons.filled.Psychology
@@ -146,7 +149,9 @@ fun SettingsScreen(
     val channelDisconnectError by viewModel.channelDisconnectError.collectAsState()
     val isCodexAuthInProgress by viewModel.isCodexAuthInProgress.collectAsState()
     val isCodexAuthenticated by viewModel.isCodexAuthenticated.collectAsState()
-    KeepScreenOnEffect(enabled = isRecoveryInstallRunning || isOpenClawUpdateRunning)
+    val isCommandRunning by viewModel.isCommandRunning.collectAsState()
+    val commandResult by viewModel.commandResult.collectAsState()
+    KeepScreenOnEffect(enabled = isRecoveryInstallRunning || isOpenClawUpdateRunning || isCommandRunning)
     val codexAuthUrl by viewModel.codexAuthUrl.collectAsState()
     val codexAuthDebugLine by viewModel.codexAuthDebugLine.collectAsState()
     val bugReportUiState by viewModel.bugReportUiState.collectAsState()
@@ -207,6 +212,8 @@ fun SettingsScreen(
     var showRecoveryInstallConfirmDialog by remember { mutableStateOf(false) }
     var showOpenClawUpdateConfirmDialog by remember { mutableStateOf(false) }
     var showWhatsAppActionDialog by remember { mutableStateOf(false) }
+    var showCommandResultDialog by remember { mutableStateOf(false) }
+    var showDeviceApproveDialog by remember { mutableStateOf(false) }
     var pendingApiKeyProvider by remember(initialApiProvider, openApiKeyDialogOnLaunch) {
         mutableStateOf(initialApiProvider?.takeIf { openApiKeyDialogOnLaunch })
     }
@@ -263,6 +270,12 @@ fun SettingsScreen(
     LaunchedEffect(whatsappQrState) {
         if (whatsappQrState is WhatsAppQrState.QrReady) {
             viewModel.confirmWhatsAppQrScanned()
+        }
+    }
+
+    LaunchedEffect(commandResult) {
+        if (commandResult != null) {
+            showCommandResultDialog = true
         }
     }
 
@@ -611,8 +624,80 @@ fun SettingsScreen(
                             } else {
                                 stringResource(R.string.settings_openclaw_doctor_fix_run)
                             },
-                            enabled = !isMaintenanceBusy,
+                            enabled = !isMaintenanceBusy && !isCommandRunning,
                             onClick = { viewModel.runOpenClawDoctorFix() },
+                        )
+
+                        HorizontalDivider(
+                            modifier = Modifier.padding(horizontal = 20.dp),
+                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
+                        )
+
+                        SettingClickableRow(
+                            title = "Dashboard URL (no browser)",
+                            value = if (isCommandRunning) "Running..." else "Run",
+                            enabled = !isMaintenanceBusy && !isCommandRunning,
+                            onClick = { viewModel.runOpenClawCommand("openclaw dashboard --no-open", "Dashboard URL") },
+                        )
+
+                        HorizontalDivider(
+                            modifier = Modifier.padding(horizontal = 20.dp),
+                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
+                        )
+
+                        SettingClickableRow(
+                            title = "List Devices",
+                            value = if (isCommandRunning) "Running..." else "Run",
+                            enabled = !isMaintenanceBusy && !isCommandRunning,
+                            onClick = { viewModel.runOpenClawCommand("openclaw devices list", "List Devices") },
+                        )
+
+                        HorizontalDivider(
+                            modifier = Modifier.padding(horizontal = 20.dp),
+                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
+                        )
+
+                        SettingClickableRow(
+                            title = "Approve Device",
+                            value = if (isCommandRunning) "Running..." else "Run",
+                            enabled = !isMaintenanceBusy && !isCommandRunning,
+                            onClick = { showDeviceApproveDialog = true },
+                        )
+
+                        HorizontalDivider(
+                            modifier = Modifier.padding(horizontal = 20.dp),
+                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
+                        )
+
+                        SettingClickableRow(
+                            title = "Gateway Restart",
+                            value = if (isCommandRunning) "Running..." else "Run",
+                            enabled = !isMaintenanceBusy && !isCommandRunning,
+                            onClick = { viewModel.runOpenClawCommand("openclaw gateway restart", "Gateway Restart") },
+                        )
+
+                        HorizontalDivider(
+                            modifier = Modifier.padding(horizontal = 20.dp),
+                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
+                        )
+
+                        SettingClickableRow(
+                            title = "Gateway Status",
+                            value = if (isCommandRunning) "Running..." else "Run",
+                            enabled = !isMaintenanceBusy && !isCommandRunning,
+                            onClick = { viewModel.runOpenClawCommand("openclaw gateway status", "Gateway Status") },
+                        )
+
+                        HorizontalDivider(
+                            modifier = Modifier.padding(horizontal = 20.dp),
+                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
+                        )
+
+                        SettingClickableRow(
+                            title = "List Plugins",
+                            value = if (isCommandRunning) "Running..." else "Run",
+                            enabled = !isMaintenanceBusy && !isCommandRunning,
+                            onClick = { viewModel.runOpenClawCommand("openclaw plugins list", "List Plugins") },
                         )
                     }
                 }
@@ -1432,6 +1517,33 @@ fun SettingsScreen(
         WhatsAppQrDialog(
             state = whatsappQrState,
             onDismiss = { viewModel.cancelWhatsAppQr() },
+        )
+    }
+
+    // ── Command Result Dialog ──
+    if (showCommandResultDialog && commandResult != null) {
+        CommandResultDialog(
+            result = commandResult!!,
+            onDismiss = {
+                showCommandResultDialog = false
+                viewModel.consumeCommandResult()
+            },
+        )
+    }
+
+    // ── Device Approve Dialog ──
+    if (showDeviceApproveDialog) {
+        DeviceApproveDialog(
+            onDismiss = { showDeviceApproveDialog = false },
+            onApprove = { deviceId ->
+                val command = if (deviceId.isBlank()) {
+                    "openclaw devices approve --latest"
+                } else {
+                    "openclaw devices approve $deviceId"
+                }
+                viewModel.runOpenClawCommand(command, "Approve Device")
+                showDeviceApproveDialog = false
+            },
         )
     }
 }
@@ -2471,4 +2583,219 @@ private fun formatFileSize(sizeBytes: Long): String {
     }
     val mb = sizeBytes / (1024.0 * 1024.0)
     return String.format("%.2f MB", mb)
+}
+
+@Composable
+private fun CommandResultDialog(
+    result: SettingsViewModel.CommandExecutionResult,
+    onDismiss: () -> Unit,
+) {
+    val scrollState = rememberScrollState()
+    val context = LocalContext.current
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(
+            usePlatformDefaultWidth = false,
+        ),
+    ) {
+        Card(
+            modifier = Modifier
+                .fillMaxWidth(0.95f)
+                .heightIn(max = 600.dp),
+            shape = RoundedCornerShape(24.dp),
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surface,
+            ),
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(24.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        Icon(
+                            imageVector = if (result.success) {
+                                Icons.Default.CheckCircle
+                            } else {
+                                Icons.Default.Error
+                            },
+                            contentDescription = null,
+                            tint = if (result.success) {
+                                MaterialTheme.colorScheme.primary
+                            } else {
+                                MaterialTheme.colorScheme.error
+                            },
+                            modifier = Modifier.size(24.dp),
+                        )
+                        Text(
+                            text = result.commandName,
+                            style = MaterialTheme.typography.titleLarge,
+                        )
+                    }
+                    IconButton(onClick = {
+                        val clipboard = context.getSystemService(android.content.ClipboardManager::class.java)
+                        val clip = android.content.ClipData.newPlainText("Command Output", result.output)
+                        clipboard.setPrimaryClip(clip)
+                        android.widget.Toast.makeText(context, "Copied to clipboard", android.widget.Toast.LENGTH_SHORT).show()
+                    }) {
+                        Icon(
+                            Icons.Default.ContentCopy,
+                            contentDescription = "Copy output",
+                            tint = MaterialTheme.colorScheme.primary,
+                        )
+                    }
+                }
+                
+                Text(
+                    text = if (result.success) {
+                        "Command executed successfully"
+                    } else {
+                        "Command failed"
+                    },
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = if (result.success) {
+                        MaterialTheme.colorScheme.primary
+                    } else {
+                        MaterialTheme.colorScheme.error
+                    },
+                    fontWeight = FontWeight.SemiBold,
+                )
+                
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f, fill = false),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                    ),
+                ) {
+                    Text(
+                        text = result.output,
+                        style = MaterialTheme.typography.bodySmall,
+                        fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .verticalScroll(scrollState)
+                            .padding(16.dp),
+                    )
+                }
+                
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End,
+                ) {
+                    TextButton(onClick = onDismiss) {
+                        Text(stringResource(android.R.string.ok))
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun DeviceApproveDialog(
+    onDismiss: () -> Unit,
+    onApprove: (String) -> Unit,
+) {
+    var deviceId by remember { mutableStateOf("") }
+    var useLatest by remember { mutableStateOf(true) }
+    
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        shape = RoundedCornerShape(24.dp),
+        title = {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Icon(
+                    Icons.Default.CheckCircle,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(24.dp),
+                )
+                Text(
+                    text = "Approve Device",
+                    style = MaterialTheme.typography.titleLarge,
+                )
+            }
+        },
+        text = {
+            Column(
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { useLatest = true },
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    RadioButton(
+                        selected = useLatest,
+                        onClick = { useLatest = true },
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "Approve latest request",
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                }
+                
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { useLatest = false },
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    RadioButton(
+                        selected = !useLatest,
+                        onClick = { useLatest = false },
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "Enter device ID",
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                }
+                
+                if (!useLatest) {
+                    OutlinedTextField(
+                        value = deviceId,
+                        onValueChange = { deviceId = it },
+                        label = { Text("Device ID") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                        placeholder = { Text("Enter device ID to approve") },
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    val id = if (useLatest) "" else deviceId
+                    onApprove(id)
+                },
+                enabled = useLatest || deviceId.isNotBlank(),
+            ) {
+                Text("Approve")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(android.R.string.cancel))
+            }
+        },
+    )
 }
