@@ -6,6 +6,7 @@ import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
+import android.widget.Button
 import android.widget.Toast
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -31,6 +32,7 @@ import androidx.compose.material.icons.filled.BatteryAlert
 import androidx.compose.material.icons.automirrored.filled.Chat
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Error
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.PowerSettingsNew
@@ -39,6 +41,7 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -77,6 +80,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.Lifecycle
@@ -214,6 +218,8 @@ fun SettingsScreen(
     var showWhatsAppActionDialog by remember { mutableStateOf(false) }
     var showCommandResultDialog by remember { mutableStateOf(false) }
     var showDeviceApproveDialog by remember { mutableStateOf(false) }
+    var showConfigEditorDialog by remember { mutableStateOf(false) }
+    var configEditorContent by remember { mutableStateOf("") }
     var pendingApiKeyProvider by remember(initialApiProvider, openApiKeyDialogOnLaunch) {
         mutableStateOf(initialApiProvider?.takeIf { openApiKeyDialogOnLaunch })
     }
@@ -274,8 +280,15 @@ fun SettingsScreen(
     }
 
     LaunchedEffect(commandResult) {
-        if (commandResult != null) {
-            showCommandResultDialog = true
+        commandResult?.let {
+            if (it.commandName == "OpenClaw Config" && it.success) {
+                configEditorContent = it.output
+                showCommandResultDialog = false
+                showConfigEditorDialog = true
+                viewModel.consumeCommandResult()
+            } else {
+                showCommandResultDialog = true
+            }
         }
     }
 
@@ -698,6 +711,20 @@ fun SettingsScreen(
                             value = if (isCommandRunning) "Running..." else "Run",
                             enabled = !isMaintenanceBusy && !isCommandRunning,
                             onClick = { viewModel.runOpenClawCommand("openclaw plugins list", "List Plugins") },
+                        )
+
+                        HorizontalDivider(
+                            modifier = Modifier.padding(horizontal = 20.dp),
+                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
+                        )
+
+                        SettingClickableRow(
+                            title = "View/Edit Config",
+                            value = if (isCommandRunning) "Running..." else "View/Edit",
+                            enabled = !isMaintenanceBusy && !isCommandRunning,
+                            onClick = {
+                                viewModel.runOpenClawCommand("cat /root/.openclaw/openclaw.json", "OpenClaw Config")
+                            },
                         )
                     }
                 }
@@ -1543,6 +1570,23 @@ fun SettingsScreen(
                 }
                 viewModel.runOpenClawCommand(command, "Approve Device")
                 showDeviceApproveDialog = false
+            },
+        )
+    }
+
+    // ── Config Editor Dialog ──
+    if (showConfigEditorDialog) {
+        ConfigEditorDialog(
+            initialContent = configEditorContent,
+            isSaving = isCommandRunning,
+            onDismiss = { showConfigEditorDialog = false },
+            onSave = { content ->
+                viewModel.saveOpenClawConfig(content) { success, output ->
+                    if (success) {
+                        configEditorContent = content
+                    }
+                    viewModel.runOpenClawCommand("echo \"${if (success) "Success" else "Error"}: $output\"", "Save Result")
+                }
             },
         )
     }
@@ -2798,4 +2842,121 @@ private fun DeviceApproveDialog(
             }
         },
     )
+}
+
+@Composable
+private fun ConfigEditorDialog(
+    initialContent: String,
+    isSaving: Boolean,
+    onDismiss: () -> Unit,
+    onSave: (String) -> Unit,
+) {
+    var content by remember { mutableStateOf(initialContent) }
+    val scrollState = rememberScrollState()
+    val context = LocalContext.current
+    
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(
+            usePlatformDefaultWidth = false,
+        ),
+    ) {
+        Card(
+            modifier = Modifier
+                .fillMaxWidth(0.95f)
+                .heightIn(max = 650.dp),
+            shape = RoundedCornerShape(24.dp),
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surface,
+            ),
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(24.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        Icon(
+                            Icons.Default.Edit,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(24.dp),
+                        )
+                        Text(
+                            text = "Edit Config",
+                            style = MaterialTheme.typography.titleLarge,
+                        )
+                    }
+                    IconButton(onClick = {
+                        val clipboard = context.getSystemService(android.content.ClipboardManager::class.java)
+                        val clip = android.content.ClipData.newPlainText("Config", content)
+                        clipboard.setPrimaryClip(clip)
+                        android.widget.Toast.makeText(context, "Copied to clipboard", android.widget.Toast.LENGTH_SHORT).show()
+                    }) {
+                        Icon(
+                            Icons.Default.ContentCopy,
+                            contentDescription = "Copy content",
+                            tint = MaterialTheme.colorScheme.primary,
+                        )
+                    }
+                }
+                
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f, fill = false),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                    ),
+                ) {
+                    OutlinedTextField(
+                        value = content,
+                        onValueChange = { content = it },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = 300.dp),
+                        textStyle = androidx.compose.ui.text.TextStyle(
+                            fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                            fontSize = 12.sp,
+                        ),
+                        placeholder = { Text("Configuration JSON...") },
+                        shape = RoundedCornerShape(12.dp),
+                    )
+                }
+                
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.End),
+                ) {
+                    TextButton(onClick = onDismiss) {
+                        Text(stringResource(android.R.string.cancel))
+                    }
+                    Button(
+                        onClick = { onSave(content) },
+                        enabled = !isSaving,
+                    ) {
+                        if (isSaving) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(20.dp),
+                                color = MaterialTheme.colorScheme.onPrimary,
+                                strokeWidth = 2.dp,
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                        }
+                        Text("Save")
+                    }
+                }
+            }
+        }
+    }
 }

@@ -978,6 +978,45 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         _commandResult.value = null
     }
 
+    fun saveOpenClawConfig(jsonContent: String, onResult: (success: Boolean, output: String) -> Unit) {
+        if (_isCommandRunning.value || _isDoctorFixRunning.value || _isRecoveryInstallRunning.value || _isOpenClawUpdateRunning.value) return
+        _isCommandRunning.value = true
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val escapedJson = jsonContent
+                    .replace("\\", "\\\\")
+                    .replace("\"", "\\\"")
+                    .replace("$", "\\$")
+                    .replace("`", "\\`")
+
+                val fullCommand = "export NODE_OPTIONS='--require /root/.openclaw-patch.js' && " +
+                    "cat > /root/.openclaw/openclaw.json << 'EOF'\n$jsonContent\nEOF 2>&1"
+                
+                val result = prootManager.executeWithResult(
+                    command = fullCommand,
+                    timeoutMs = 300_000,
+                    extraEnv = emptyMap(),
+                )
+                
+                val success = when {
+                    result == null -> false
+                    result.timedOut -> false
+                    else -> result.exitCode == 0
+                }
+                val output = when {
+                    result == null -> "Failed to execute command."
+                    result.timedOut -> "Command timed out after 300 seconds.\n\n${result.output}"
+                    result.output.isBlank() -> "File saved successfully."
+                    else -> result.output
+                }
+                
+                onResult(success, output)
+            } finally {
+                _isCommandRunning.value = false
+            }
+        }
+    }
+
     fun runOpenClawCommand(command: String, commandName: String) {
         if (_isCommandRunning.value || _isDoctorFixRunning.value || _isRecoveryInstallRunning.value || _isOpenClawUpdateRunning.value) return
         _isCommandRunning.value = true
